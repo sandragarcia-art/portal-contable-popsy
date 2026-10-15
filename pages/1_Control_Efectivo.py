@@ -386,6 +386,104 @@ else:
             
         return pd.DataFrame(filas)[columnas_multiusos]
 
+    def generar_plano_multiusos_qr(df_filtrado, df_matriz_dtf, codigo_sociedad):
+        columnas_multiusos = [
+            'ID', 'USUARIO', 'LEDGER', 'FECHA DOC', 'CLASE DOCUMENTO', 'SOCIEDAD', 'FECHA CONT',
+            'FECHA REG', 'MONEDA TR', 'TASA DE CAMBIO', 'REFERENCIA', 'TEXTO CABECERA',
+            'IDENTIFICADOR PI', 'POSICION', 'CLAVE CONTABILIZACION', 'CUENTA DE MAYOR',
+            'CLASE DE CUENTA', 'PROVEEDOR', 'CLIENTE', 'PAGADOR ALTERNATIVO', 'INDICADOR CME',
+            'VALOR TR', 'IND IVA', 'CALCULAR IMP. AUTOMATICO', 'FECHA BASE', 'CONDICION PAGO',
+            'FECHA VALOR', 'Orden de Compra', 'Posicion OC', 'ORDEN', 'CECO', 'CEBE', 'GRAFO',
+            'OPERACION GRAFO', 'ELEMENTO PEP', 'ASIGNACION', 'CLAVE DE REF_1', 'CLAVE DE REF_2',
+            'CLAVE DE REF_3', 'TEXTO POSICION', 'INDICADOR TP. RETENCIONES 1', 'INDICADOR RETENCION  1',
+            'BASE RETENCION 1', 'BASE RETENCION DOC 1', 'INDICADOR TP. RETENCIONES 2', 'INDICADOR RETENCION  2',
+            'BASE RETENCION 2', 'BASE RETENCION DOC 2', 'INDICADOR TP. RETENCIONES 3', 'INDICADOR RETENCION  3',
+            'BASE RETENCION 3', 'BASE RETENCION DOC 3', 'INDICADOR TP. RETENCIONES 4', 'INDICADOR RETENCION  4',
+            'BASE RETENCION 4', 'BASE RETENCION DOC4', 'INDICADOR TP. RETENCIONES 5', 'INDICADOR RETENCION  5',
+            'BASE RETENCION 5', 'BASE RETENCION DOC 5', 'AÑO', 'MES', 'MONEDA', 'OBJETO COSTO',
+            'CLASE DE ACTIVIDAD', 'POSICION DE LA ORDEN', 'HOJA DE RUTA', 'SEGMENTO', 'PRODUCTO',
+            'OF VENTAS', 'CLIENTE CAR', 'CLASE MEDIO DE TRANSPORTE', 'ZONA', 'MEDIO DE TRANSPORTE',
+            'GRUPO MATERIAL 1', 'GRUPO MATERIAL 2', 'GRUPO MATERIAL 3', 'GRUPO MATERIAL 4',
+            'VALOR LC', 'FECHA RFERENCIA PAGO', 'DOCUMENTO REFERENCIA', 'FECHA REFERENCIA', 'BLOQUEO PAGO'
+        ]
+        
+        filas = []
+        fecha_hoy = datetime.now().strftime('%d.%m.%Y')
+        nit_corporativo = "8600538311"
+        
+        # Mapeo de nombres de columnas del plano QR a la matriz base
+        mapa_columnas_vlr = {
+            'Vlr Abono': 'VLR TOTAL', # o el equivalente de abono si viene en QR
+            'Vlr Comision': 'VALOR COMISION',
+            'Vlr Total': 'VALOR TOTAL',
+            'Vlr Rete Fuente': 'VALOR RETE FUENTE',
+            'Vlr Rete Ica': 'VALOR RETE ICA',
+            'Vlr Rete Iva': 'VALOR RETE IVA'
+        }
+
+        for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
+            comercio_val = str(row.get('CODIGO UNICO', row.get('COMERCIO', idx))).strip()
+            
+            # Fecha de proceso como fecha doc y fecha reg
+            fecha_doc = fecha_hoy
+            val_fec = row.get('FECHA DE PROCESO', row.get('FECHA PROCESO', None))
+            if pd.notna(val_fec):
+                try:
+                    fec_str = str(val_fec).strip()
+                    parsed = pd.to_datetime(fec_str)
+                    if pd.notna(parsed):
+                        fecha_doc = parsed.strftime('%d.%m.%Y')
+                except:
+                    pass
+
+            pdv_val = str(row.get('PDV_SAP', ''))
+            cebe_val = str(row.get('CB', ''))
+            
+            # Filtrar matriz base para TRN 6 (Ventas)
+            filas_matriz = df_matriz_dtf[df_matriz_dtf['TRN'] == 6]
+            if len(filas_matriz) == 0:
+                filas_matriz = df_matriz_dtf # por si no tiene columna TRN
+            
+            pos_efectiva = 1
+            for _, m_row in filas_matriz.iterrows():
+                tipo_cta = str(m_row['TIPO CUENTA']).strip()
+                cuenta_sap = int(m_row['CUENTA SAP'])
+                cc_sap = int(m_row['CC SAP'])
+                
+                # Buscar columna correspondiente en el plano QR
+                col_plano = None
+                for k, v in mapa_columnas_vlr.items():
+                    if k.lower() in tipo_cta.lower():
+                        col_plano = v
+                        break
+                if not col_plano:
+                    col_plano = 'VALOR TOTAL' if 'total' in tipo_cta.lower() else 'VALOR COMISION'
+                
+                val_raw = row.get(col_plano, 0) if col_plano in row else 0
+                try:
+                    valor_val = int(round(abs(float(val_raw))))
+                except:
+                    valor_val = 0
+                
+                if valor_val == 0:
+                    continue
+                
+                texto_pos = f"{fecha_doc} QR DE {pdv_val}"
+                
+                p = {c: None for c in columnas_multiusos}
+                p.update({
+                    'ID': idx, 'FECHA DOC': fecha_doc, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
+                    'FECHA CONT': fecha_doc, 'FECHA REG': fecha_doc, 'MONEDA TR': 'COP',
+                    'REFERENCIA': comercio_val, 'TEXTO CABECERA': f"PAGO QR",
+                    'IDENTIFICADOR PI': idx, 'POSICION': pos_efectiva, 'CLAVE CONTABILIZACION': cc_sap,
+                    'CUENTA DE MAYOR': cuenta_sap, 'VALOR TR': valor_val, 'CEBE': cebe_val,
+                    'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_pos
+                })
+                filas.append(p)
+                pos_efectiva += 1
+            
+        return pd.DataFrame(filas)[columnas_multiusos]
+
     # --- VERIFICACIÓN DE ARCHIVOS MAESTROS ---
     if codigo_sociedad is None:
         st.warning(f"🚧 La sociedad **{sociedad_seleccionada}** se encuentra en proceso de implementación.")
@@ -435,7 +533,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v14")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v16")
         
         if uploaded_multicash_gen:
             try:
@@ -675,4 +773,67 @@ else:
         if maneja_qr and tab_qr is not None:
             with tab_qr:
                 st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
-                st.markdown("Próximamente disponible con la misma estructura multi-línea automatizada.")
+                st.markdown("Sube el **Archivo Plano de Códigos QR** para procesarlo con la matriz de cuentas y generar automáticamente el Plano Multiusos SAP.")
+                
+                uploaded_qr = st.file_uploader("Sube el Archivo Plano de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_final")
+                
+                if uploaded_qr:
+                    try:
+                        if uploaded_qr.name.lower().endswith(('.xlsx', '.xls')):
+                            df_q_raw = pd.read_excel(uploaded_qr)
+                        else:
+                            df_q_raw = pd.read_csv(uploaded_qr, encoding='latin1')
+                            
+                        df_q_raw.columns = [str(c).strip().upper() for c in df_q_raw.columns]
+                        cols_lower = [str(c).lower() for c in df_q_raw.columns]
+                        
+                        col_val_qr = next((df_q_raw.columns[i] for i, c in enumerate(cols_lower) if 'valor total' in c or 'vlr total' in c or 'valor compra' in c or 'total' in c), None)
+                        df_q_raw['VALOR_LIMPIO'] = pd.to_numeric(df_q_raw[col_val_qr], errors='coerce').fillna(0) if col_val_qr else 0.0
+                        
+                        def mapear_comercio_qr(row):
+                            comercio = str(row.get('CODIGO UNICO', row.get('COMERCIO', ''))).strip()
+                            terminal = str(row.get('NUMERO DE TERMINAL', row.get('TERMINAL', ''))).strip()
+                            if (comercio, terminal) in mapa_comercios:
+                                info = mapa_comercios[(comercio, terminal)]
+                                return info['pdv_sap'], info['cb']
+                            elif comercio in mapa_comercios:
+                                info = mapa_comercios[comercio]
+                                return info['pdv_sap'], info['cb']
+                            return '', ''
+
+                        res_q = df_q_raw.apply(mapear_comercio_qr, axis=1)
+                        df_q_raw['PDV_SAP'] = [r[0] for r in res_q]
+                        df_q_raw['CB'] = [r[1] for r in res_q]
+                        
+                        df_no_homologados_q = df_q_raw[df_q_raw['PDV_SAP'] == '']
+                        if len(df_no_homologados_q) > 0:
+                            comercios_unicos_q = df_no_homologados_q[['CODIGO UNICO']].drop_duplicates()
+                            lista_advertencia_q = ", ".join([str(r['CODIGO UNICO']) for _, r in comercios_unicos_q.iterrows()])
+                            st.markdown(f"""
+                                <div style="background-color: #F8D7DA; color: #721C24; padding: 15px; border-radius: 10px; border-left: 6px solid #F5C6CB; margin-bottom: 20px;">
+                                    <b>⚠️ Alerta de Homologación QR:</b> Se detectaron <b>{len(df_no_homologados_q)}</b> registros cuyos códigos únicos no están en el archivo maestro <code>{nombre_archivo_comercios}</code>.<br>
+                                    <br><b>Códigos faltantes:</b> {lista_advertencia_q}<br>
+                                </div>
+                            """, unsafe_allow_html=True)
+
+                        st.metric("Total Transacciones QR", f"{len(df_q_raw)} registros", f"${df_q_raw['VALOR_LIMPIO'].sum():,.2f}")
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        
+                        with st.spinner("Generando el Plano Multiusos SAP de Códigos QR con matriz contable... Por favor espera ⏳"):
+                            plano_q = generar_plano_multiusos_qr(df_q_raw, df_matriz_dtf, codigo_sociedad)
+                            csv_q = plano_q.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                        
+                        st.success(f"¡Plano QR generado con éxito! Total de posiciones contables creadas: {len(plano_q):,}")
+                        
+                        st.download_button(
+                            label="📥 Descargar Plano Multiusos SAP - Códigos QR (.csv)",
+                            data=csv_q,
+                            file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="btn_dl_qr_final_csv",
+                            use_container_width=True
+                        )
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.dataframe(df_q_raw, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Error procesando códigos QR: {e}")
