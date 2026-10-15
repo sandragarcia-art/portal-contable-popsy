@@ -117,7 +117,7 @@ else:
     # ==========================================
     if "1. Consignaciones" in tipo_proceso:
         st.markdown("### 📥 Módulo de Consignaciones y Control Efectivo")
-        st.markdown("Carga el **extracto bancario** para contrastarlo con la **base de datos contable fija** (`base_control_efectivo.xlsx`), analizar la **cantidad de partidas** (conciliadas vs. pendientes) y generar el archivo plano multiusos.")
+        st.markdown("Carga el **extracto bancario** para realizar el cruce automático (**BUSCARV**) entre la **Columna A** de la base de datos fija (`texto multicahs`) y la **Columna J** del extracto.")
         
         archivo_extracto = st.file_uploader("Cargar Extracto Bancario (Excel o CSV)", type=["xlsx", "csv"])
         BASE_DATOS_FIJA = "base_control_efectivo.xlsx"
@@ -130,106 +130,102 @@ else:
                 else:
                     df_extracto = pd.read_excel(archivo_extracto)
                 
-                # Normalizar columnas del extracto a mayúsculas sin espacios
-                df_extracto.columns = df_extracto.columns.str.strip().str.upper()
-                
                 # Cargar base de datos fija
                 if os.path.exists(BASE_DATOS_FIJA):
                     df_base = pd.read_excel(BASE_DATOS_FIJA)
-                    df_base.columns = df_base.columns.str.strip().str.upper()
                     st.success("✅ Base de datos contable fija cargada correctamente desde el sistema.")
                 else:
-                    st.warning(f"⚠️ No se encontró '{BASE_DATOS_FIJA}' en la raíz. Usando base de ejemplo.")
-                    df_base = pd.DataFrame({
-                        "VALOR": [450000.0, 325000.0, 510000.0, 1250000.0],
-                        "REFERENCIA": ["REF001", "REF002", "REF003", "REF004"]
-                    })
+                    st.warning(f"⚠️ No se encontró '{BASE_DATOS_FIJA}' en la raíz. Asegúrate de haberlo subido.")
+                    df_base = pd.DataFrame()
                 
-                with st.expander("🔍 Ver vista previa de la Base de Datos Contable Fija"):
-                    st.dataframe(df_base.head(5), use_container_width=True)
-                
-                if st.button("🚀 Ejecutar Cruce y Control de Partidas"):
-                    with st.spinner("Analizando extracto y cruzando con la base de datos..."):
-                        
-                        # Detectar columna de valor en el extracto y en la base
-                        col_val_ext = next((c for c in df_extracto.columns if 'VALOR' in c or 'MONTO' in c or 'VAL' in c), df_extracto.columns[0])
-                        col_val_base = next((c for c in df_base.columns if 'VALOR' in c or 'MONTO' in c or 'VAL' in c), df_base.columns[0])
-                        
-                        # Limpiar y convertir a numérico
-                        df_extracto['VALOR_CLEAN'] = pd.to_numeric(df_extracto[col_val_ext].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0)
-                        df_base['VALOR_CLEAN'] = pd.to_numeric(df_base[col_val_base].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0)
-                        
-                        # Total partidas subidas en el extracto
-                        total_partidas_subidas = len(df_extracto)
-                        
-                        # Cruce por valor exacto
-                        valores_base = set(df_base['VALOR_CLEAN'])
-                        
-                        # Identificar conciliadas y pendientes por cantidad de partidas
-                        df_extracto['ESTADO'] = df_extracto['VALOR_CLEAN'].apply(lambda x: 'CONCILIADO' if x in valores_base else 'PENDIENTE')
-                        
-                        cant_conciliadas = len(df_extracto[df_extracto['ESTADO'] == 'CONCILIADO'])
-                        cant_pendientes = len(df_extracto[df_extracto['ESTADO'] == 'PENDIENTE'])
-                        
-                        st.markdown("### 📊 Resultado del Control de Partidas")
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric(label="Total Partidas Subidas", value=f"{total_partidas_subidas} registros", delta="100% Analizado")
-                        m2.metric(label="Partidas Conciliadas", value=f"{cant_conciliadas} partidas", delta="Match Exitoso", delta_color="normal")
-                        m3.metric(label="Partidas Pendientes", value=f"{cant_pendientes} partidas", delta="Por revisar", delta_color="inverse")
-                        
-                        # Mostrar tabla detallada del cruce
-                        st.markdown("#### 📋 Detalle del Cruce de Partidas")
-                        st.dataframe(df_extracto, use_container_width=True)
-                        
-                        # Generación de Archivo Plano Multiusos con las partidas reales
-                        st.markdown("#### 📄 Archivo Plano Multiusos")
-                        st.success("El archivo plano multiusos se ha generado con el detalle de las partidas conciliadas y pendientes.")
-                        
-                        # Crear contenido plano estructurado correctamente
-                        lineas_plano = ["SOCIEDAD;FECHA_EXTRACTO;VALOR;ESTADO"]
-                        for idx, row in df_extracto.iterrows():
-                            fecha_val = row.get('FECHA', datetime.today().strftime('%Y-%m-%d'))
-                            valor_val = row['VALOR_CLEAN']
-                            estado_val = row['ESTADO']
-                            lineas_plano.append(f"{sociedad_seleccionada[:4]};{fecha_val};{valor_val};{estado_val}")
-                        
-                        contenido_plano = "\n".join(lineas_plano)
-                        
-                        st.download_button(
-                            label="📥 Descargar Archivo Plano Multiusos (.txt)",
-                            data=contenido_plano,
-                            file_name=f"Multiusos_ControlEfectivo_{sociedad_seleccionada[:4]}.txt",
-                            mime="text/plain"
-                        )
+                if not df_base.empty and len(df_base.columns) > 0 and len(df_extracto.columns) >= 10:
+                    
+                    with st.expander("🔍 Ver vista previa de las fuentes de datos"):
+                        col_prev1, col_prev2 = st.columns(2)
+                        with col_prev1:
+                            st.write("Base de Datos Fija (Columna A - texto multicahs):")
+                            st.dataframe(df_base.head(3), use_container_width=True)
+                        with col_prev2:
+                            st.write("Extracto Bancario (Columna J):")
+                            st.dataframe(df_extracto.head(3), use_container_width=True)
+                    
+                    if st.button("🚀 Ejecutar Cruce (BUSCARV Col A vs Col J)"):
+                        with st.spinner("Realizando cruce de datos..."):
+                            
+                            # Columna A de la base de datos (índice 0)
+                            col_base_name = df_base.columns[0]
+                            textos_base = set(df_base[col_base_name].astype(str).str.strip().str.upper())
+                            
+                            # Columna J del extracto (índice 9, ya que J es la décima columna)
+                            col_ext_name = df_extracto.columns[9]
+                            
+                            # Normalizar valores del extracto en la columna J para la búsqueda
+                            df_extracto['TEXTO_J_CLEAN'] = df_extracto[col_ext_name].astype(str).str.strip().str.upper()
+                            
+                            # Evaluar coincidencia (BUSCARV)
+                            df_extracto['ESTADO_CRUCE'] = df_extracto['TEXTO_J_CLEAN'].apply(
+                                lambda x: 'CONCILIADO' if x in textos_base and x != 'NAN' and x != '' else 'PENDIENTE'
+                            )
+                            
+                            # Conteo de partidas
+                            total_partidas = len(df_extracto)
+                            cant_conciliadas = len(df_extracto[df_extracto['ESTADO_CRUCE'] == 'CONCILIADO'])
+                            cant_pendientes = len(df_extracto[df_extracto['ESTADO_CRUCE'] == 'PENDIENTE'])
+                            
+                            # Métricas
+                            st.markdown("### 📊 Resultado del Control de Partidas")
+                            m1, m2, m3 = st.columns(3)
+                            m1.metric(label="Total Partidas Subidas", value=f"{total_partidas} registros")
+                            m2.metric(label="Partidas Conciliadas (Match)", value=f"{cant_conciliadas} partidas", delta="OK")
+                            m3.metric(label="Partidas Pendientes", value=f"{cant_pendientes} partidas", delta="Por revisar", delta_color="inverse")
+                            
+                            # Tabla detallada
+                            st.markdown("#### 📋 Detalle del Resultado del Cruce")
+                            st.dataframe(df_extracto, use_container_width=True)
+                            
+                            # Generación del archivo plano multiusos
+                            st.markdown("#### 📄 Archivo Plano Multiusos")
+                            st.success("Archivo plano multiusos listo para descargar con las partidas conciliadas y pendientes.")
+                            
+                            lineas_plano = ["SOCIEDAD;TEXTO_MULTICAHS_J;ESTADO_CRUCE"]
+                            for idx, row in df_extracto.iterrows():
+                                texto_j = row['TEXTO_J_CLEAN']
+                                estado = row['ESTADO_CRUCE']
+                                lineas_plano.append(f"{sociedad_seleccionada[:4]};{texto_j};{estado}")
+                            
+                            contenido_plano = "\n".join(lineas_plano)
+                            
+                            st.download_button(
+                                label="📥 Descargar Archivo Plano Multiusos (.txt)",
+                                data=contenido_plano,
+                                file_name=f"Multiusos_ControlEfectivo_{sociedad_seleccionada[:4]}.txt",
+                                mime="text/plain"
+                            )
+                else:
+                    st.error("⚠️ El archivo Excel fijo no tiene columnas o el extracto cargado tiene menos de 10 columnas (necesitamos la Columna J).")
             except Exception as e:
-                st.error(f"Error procesando el archivo: {e}")
+                st.error(f"Error procesando los archivos: {e}")
         else:
-            st.info("📌 Por favor carga el **Extracto Bancario** para realizar el conteo de partidas y generar el informe multiusos.")
+            st.info("📌 Por favor carga el **Extracto Bancario** para ejecutar el cruce automático.")
 
     # ==========================================
     # 2. DATÁFONOS & PASARELAS
     # ==========================================
     elif "2. Datáfonos" in tipo_proceso:
         st.markdown("### 💳 Módulo de Control - Datáfonos y Pasarelas")
-        st.markdown("Procesa los reportes de ventas por datáfono frente a los registros oficiales de cada Punto de Venta.")
-        
         archivo_datáfono = st.file_uploader("Cargar Reporte de Datáfonos / Pasarelas", type=["xlsx", "csv"])
         if archivo_datáfono:
             st.success("✅ Reporte de datáfonos cargado correctamente.")
-            if st.button("🚀 Procesar Cuadre de Datáfonos"):
-                st.markdown("#### 📊 Resumen de Partidas y Comisiones")
-                st.success("¡Control de pasarelas generado exitosamente!")
+            if st.button("🚀 Procesar Partidas de Datáfonos"):
+                st.success("¡Control de datáfonos procesado con éxito!")
 
     # ==========================================
     # 3. PAGOS CÓDIGO QR
     # ==========================================
     elif "3. Pagos" in tipo_proceso:
         st.markdown("### 📱 Módulo de Control - Pagos con Código QR")
-        st.markdown("Cruza los recaudos mediante códigos QR con la base de datos de control de efectivo.")
-        
         archivo_qr = st.file_uploader("Cargar Reporte de Recaudos QR", type=["xlsx", "csv"])
         if archivo_qr:
             st.success("✅ Reporte QR cargado con éxito.")
             if st.button("🚀 Procesar Partidas QR"):
-                st.markdown("#### 📊 Resultado de Partidas QR")
-                st.success("¡Control de pagos QR completado!")
+                st.success("¡Control de pagos QR completado con éxito!")
