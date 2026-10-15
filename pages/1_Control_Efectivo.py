@@ -276,7 +276,8 @@ else:
             
             val_raw = row.get('VALOR_LIMPIO', row.get('VALOR', row.get('VALOR TR', 0)))
             try:
-                valor_val = float(val_raw)
+                # Asegurar valor absoluto o limpio para SAP
+                valor_val = abs(float(val_raw))
             except:
                 valor_val = 0.0
                 
@@ -427,27 +428,27 @@ else:
                     st.markdown(f"### 🏦 Plano Multiusos • Consignaciones")
                     st.metric("Total Consignaciones Detectadas", f"{len(df_c)} registros", f"${df_c['VALOR_LIMPIO'].sum():,.2f}")
                     
-                    if len(df_c) > 0:
-                        plano_c = generar_plano_multiusos(df_c, "CG", codigo_sociedad)
-                        out_c = io.BytesIO()
-                        with pd.ExcelWriter(out_c, engine='openpyxl') as w:
-                            plano_c.to_excel(w, sheet_name='Multiusos_Consignaciones', index=False)
-                        out_c.seek(0)
-                        wb_c = openpyxl.load_workbook(out_c)
-                        wb_c_est = aplicar_estilos_excel_bytes(wb_c)
-                        final_c = io.BytesIO()
-                        wb_c_est.save(final_c)
-                        final_c.seek(0)
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
-                            data=final_c,
-                            file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="dl_c_btn_new",
-                            use_container_width=True
-                        )
+                    # Generación directa sin restricciones de bloque
+                    plano_c = generar_plano_multiusos(df_c, "CG", codigo_sociedad)
+                    out_c = io.BytesIO()
+                    with pd.ExcelWriter(out_c, engine='openpyxl') as w:
+                        plano_c.to_excel(w, sheet_name='Multiusos_Consignaciones', index=False)
+                    out_c.seek(0)
+                    wb_c = openpyxl.load_workbook(out_c)
+                    wb_c_est = aplicar_estilos_excel_bytes(wb_c)
+                    final_c = io.BytesIO()
+                    wb_c_est.save(final_c)
+                    final_c.seek(0)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.download_button(
+                        label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
+                        data=final_c,
+                        file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dl_c_btn_v3",
+                        use_container_width=True
+                    )
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.dataframe(df_c, use_container_width=True)
 
@@ -456,27 +457,26 @@ else:
                     st.markdown(f"### 💳 Plano Multiusos • Datáfonos")
                     st.metric("Total Datáfonos Detectados", f"{len(df_d)} registros", f"${df_d['VALOR_LIMPIO'].sum():,.2f}")
                     
-                    if len(df_d) > 0:
-                        plano_d = generar_plano_multiusos(df_d, "DTF", codigo_sociedad)
-                        out_d = io.BytesIO()
-                        with pd.ExcelWriter(out_d, engine='openpyxl') as w:
-                            plano_d.to_excel(w, sheet_name='Multiusos_Datafonos', index=False)
-                        out_d.seek(0)
-                        wb_d = openpyxl.load_workbook(out_d)
-                        wb_d_est = aplicar_estilos_excel_bytes(wb_d)
-                        final_d = io.BytesIO()
-                        wb_d_est.save(final_d)
-                        final_d.seek(0)
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
-                            data=final_d,
-                            file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="dl_d_btn_new",
-                            use_container_width=True
-                        )
+                    plano_d = generar_plano_multiusos(df_d, "DTF", codigo_sociedad)
+                    out_d = io.BytesIO()
+                    with pd.ExcelWriter(out_d, engine='openpyxl') as w:
+                        plano_d.to_excel(w, sheet_name='Multiusos_Datafonos', index=False)
+                    out_d.seek(0)
+                    wb_d = openpyxl.load_workbook(out_d)
+                    wb_d_est = aplicar_estilos_excel_bytes(wb_d)
+                    final_d = io.BytesIO()
+                    wb_d_est.save(final_d)
+                    final_d.seek(0)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.download_button(
+                        label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
+                        data=final_d,
+                        file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dl_d_btn_v3",
+                        use_container_width=True
+                    )
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.dataframe(df_d, use_container_width=True)
 
@@ -485,27 +485,26 @@ else:
                     st.markdown(f"### 📱 Plano Multiusos • Códigos QR")
                     st.metric("Total Códigos QR Detectados", f"{len(df_q)} registros", f"${df_q['VALOR_LIMPIO'].sum():,.2f}")
                     
-                    if len(df_q) > 0:
-                        plano_q = generar_plano_multiusos(df_q, "QR", codigo_sociedad)
-                        out_q = io.BytesIO()
-                        with pd.ExcelWriter(out_q, engine='openpyxl') as w:
-                            plano_q.to_excel(w, sheet_name='Multiusos_QR', index=False)
-                        out_q.seek(0)
-                        wb_q = openpyxl.load_workbook(out_q)
-                        wb_q_est = aplicar_estilos_excel_bytes(wb_q)
-                        final_q = io.BytesIO()
-                        wb_q_est.save(final_q)
-                        final_q.seek(0)
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
-                            data=final_q,
-                            file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="dl_q_btn_new",
-                            use_container_width=True
-                        )
+                    plano_q = generar_plano_multiusos(df_q, "QR", codigo_sociedad)
+                    out_q = io.BytesIO()
+                    with pd.ExcelWriter(out_q, engine='openpyxl') as w:
+                        plano_q.to_excel(w, sheet_name='Multiusos_QR', index=False)
+                    out_q.seek(0)
+                    wb_q = openpyxl.load_workbook(out_q)
+                    wb_q_est = aplicar_estilos_excel_bytes(wb_q)
+                    final_q = io.BytesIO()
+                    wb_q_est.save(final_q)
+                    final_q.seek(0)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.download_button(
+                        label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
+                        data=final_q,
+                        file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dl_q_btn_v3",
+                        use_container_width=True
+                    )
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.dataframe(df_q, use_container_width=True)
 
