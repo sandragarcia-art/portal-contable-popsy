@@ -325,10 +325,10 @@ else:
             }
 
         # ==========================================
-        # CARGA ÚNICA DEL EXTRACTO GENERAL (PARA EL RESUMEN)
+        # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para el Resumen y Diagnóstico", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_multicash")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global")
         
         if uploaded_multicash_gen:
             try:
@@ -367,7 +367,6 @@ else:
                 df_q_gen = df_ext_gen[df_ext_gen['TIPO'] == 'QR']
                 df_p_gen = df_ext_gen[df_ext_gen['TIPO'] == 'POR IDENTIFICAR']
                 
-                # --- RESUMEN EJECUTIVO GLOBAL ---
                 st.markdown("#### 📊 Diagnóstico General del Extracto")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 
@@ -418,7 +417,7 @@ else:
         st.markdown("<br><hr><br>", unsafe_allow_html=True)
 
         # ==========================================
-        # PESTAÑAS INDEPENDIENTES Y PLANOS MULTIUSOS
+        # 2. PESTAÑAS INDEPENDIENTES Y PLANOS MULTIUSOS
         # ==========================================
         tab_cons, tab_dtf, tab_qr = st.tabs([
             "🏦 1. Consignaciones", 
@@ -426,12 +425,12 @@ else:
             "📱 3. Códigos QR"
         ])
 
-        # --- MÓDULO 1: CONSIGNACIONES ---
+        # MÓDULO 1: CONSIGNACIONES
         with tab_cons:
             st.markdown(f"### 🏦 Módulo de Consignaciones • {sociedad_seleccionada}")
             st.markdown("Sube el **Extracto Bancario / Multicash** para procesar las consignaciones y descargar el Plano Multiusos SAP.")
             
-            uploaded_cons = st.file_uploader("Sube el Extracto Bancario (Consignaciones)", type=["xlsx", "XLSX", "xls", "csv"], key="up_cons_ind_v2")
+            uploaded_cons = st.file_uploader("Sube el Extracto Bancario (Consignaciones)", type=["xlsx", "XLSX", "xls", "csv"], key="up_cons_tab")
             
             if uploaded_cons:
                 try:
@@ -479,7 +478,7 @@ else:
                         data=final_c,
                         file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="btn_dl_cons_v2",
+                        key="btn_dl_cons_final",
                         use_container_width=True
                     )
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -487,12 +486,12 @@ else:
                 except Exception as e:
                     st.error(f"Error procesando consignaciones: {e}")
 
-        # --- MÓDULO 2: DATÁFONOS ---
+        # MÓDULO 2: DATÁFONOS
         with tab_dtf:
             st.markdown(f"### 💳 Módulo de Datáfonos • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Datáfonos / Pasarelas** independiente para procesarlo y descargar su Plano Multiusos SAP.")
             
-            uploaded_dtf = st.file_uploader("Sube el Archivo de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_ind_v2")
+            uploaded_dtf = st.file_uploader("Sube el Archivo de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_tab")
             
             if uploaded_dtf:
                 try:
@@ -540,7 +539,7 @@ else:
                         data=final_d,
                         file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="btn_dl_dtf_v2",
+                        key="btn_dl_dtf_final",
                         use_container_width=True
                     )
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -548,12 +547,12 @@ else:
                 except Exception as e:
                     st.error(f"Error procesando datáfonos: {e}")
 
-        # --- MÓDULO 3: CÓDIGOS QR ---
+        # MÓDULO 3: CÓDIGOS QR
         with tab_qr:
             st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Códigos QR** independiente para procesarlo y descargar su Plano Multiusos SAP.")
             
-            uploaded_qr = st.file_uploader("Sube el Archivo de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_ind_v2")
+            uploaded_qr = st.file_uploader("Sube el Archivo de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_tab")
             
             if uploaded_qr:
                 try:
@@ -601,7 +600,7 @@ else:
                         data=final_q,
                         file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="btn_dl_qr_v2",
+                        key="btn_dl_qr_final",
                         use_container_width=True
                     )
                     st.markdown("<br>", unsafe_allow_html=True)
