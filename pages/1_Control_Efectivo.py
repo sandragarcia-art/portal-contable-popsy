@@ -316,12 +316,12 @@ else:
         nit_corporativo = "8600538311"
         
         mapa_columnas_vlr = {
-            'Vlr Abono': 'Vlr Abono',
-            'Vlr Comision': 'Vlr Comision',
-            'Vlr Rete Fuente': 'Vlr Rete Fuente',
-            'Vlr Rete Ica': 'Vlr Rete Ica',
-            'Vlr Rete Iva': 'Vlr Rete Iva',
-            'Vlr Total': 'Vlr Total'
+            'Vlr Abono': 'VLR ABONO',
+            'Vlr Comision': 'VLR COMISION',
+            'Vlr Rete Fuente': 'VLR RETE FUENTE',
+            'Vlr Rete Ica': 'VLR RETE ICA',
+            'Vlr Rete Iva': 'VLR RETE IVA',
+            'Vlr Total': 'VLR TOTAL'
         }
 
         for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
@@ -417,7 +417,99 @@ else:
                 }
 
         # ==========================================
-        # PESTAÑAS PRINCIPALES
+        # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
+        # ==========================================
+        st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v9")
+        
+        if uploaded_multicash_gen:
+            try:
+                if uploaded_multicash_gen.name.lower().endswith(('.xlsx', '.xls')):
+                    df_ext_gen = pd.read_excel(uploaded_multicash_gen)
+                else:
+                    df_ext_gen = pd.read_csv(uploaded_multicash_gen, encoding='latin1')
+                    
+                df_ext_gen.columns = [str(c).strip().upper() for c in df_ext_gen.columns]
+                cols_lower = [str(c).lower() for c in df_ext_gen.columns]
+                col_val_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
+                
+                df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0) if col_val_gen else 0.0
+                col_ref_gen = df_ext_gen.columns[min(9, len(df_ext_gen.columns) - 1)]
+                
+                def clasificar_gen(row):
+                    ref_text = str(row.get(col_ref_gen, '')).strip().upper()
+                    if ref_text in mapa_multicash:
+                        info = mapa_multicash[ref_text]
+                        return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    for k, info in mapa_multicash.items():
+                        if k and k in ref_text:
+                            return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    return 'POR IDENTIFICAR', '', ''
+
+                res_gen = df_ext_gen.apply(clasificar_gen, axis=1)
+                df_ext_gen['TIPO'] = [r[0] for r in res_gen]
+                df_ext_gen['PDV_SAP'] = [r[1] for r in res_gen]
+                df_ext_gen['CB_SAP'] = [r[2] for r in res_gen]
+                
+                tot_reg = len(df_ext_gen)
+                tot_monto = df_ext_gen['VALOR_LIMPIO'].sum()
+                
+                df_c_gen = df_ext_gen[df_ext_gen['TIPO'] == 'Consignaciones']
+                df_d_gen = df_ext_gen[df_ext_gen['TIPO'] == 'Datafonos']
+                df_q_gen = df_ext_gen[df_ext_gen['TIPO'] == 'QR']
+                df_p_gen = df_ext_gen[df_ext_gen['TIPO'] == 'POR IDENTIFICAR']
+                
+                st.markdown("#### 📊 Diagnóstico General del Extracto")
+                c1, c2, c3, c4, c5 = st.columns(5)
+                
+                with c1:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Total Extracto</div>
+                            <div class="metric-val">{tot_reg} part.</div>
+                            <div class="metric-sub">${tot_monto:,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Consignaciones</div>
+                            <div class="metric-val">{len(df_c_gen)} part.</div>
+                            <div class="metric-sub">${df_c_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Datáfonos</div>
+                            <div class="metric-val">{len(df_d_gen)} part.</div>
+                            <div class="metric-sub">${df_d_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c4:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">QR</div>
+                            <div class="metric-val">{len(df_q_gen)} part.</div>
+                            <div class="metric-sub">${df_q_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c5:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Por Identificar</div>
+                            <div class="metric-val">{len(df_p_gen)} part.</div>
+                            <div class="metric-sub" style="color: #DC2626;">${df_p_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+            except Exception as e:
+                st.error(f"Error procesando resumen general: {e}")
+
+        st.markdown("<br><hr><br>", unsafe_allow_html=True)
+
+        # ==========================================
+        # 2. PESTAÑAS INDEPENDIENTES Y PLANOS MULTIUSOS
         # ==========================================
         tab_cons, tab_dtf, tab_qr = st.tabs([
             "🏦 1. Consignaciones", 
