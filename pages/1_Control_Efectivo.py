@@ -111,6 +111,32 @@ st.markdown("""
         margin: 0;
         font-style: italic;
     }
+    .metric-card {
+        background: white;
+        border: 1px solid #E5E7EB;
+        padding: 16px;
+        border-radius: 12px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        text-align: center;
+    }
+    .metric-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #6B7280;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .metric-val {
+        font-size: 16px;
+        font-weight: 800;
+        color: #1F2937;
+    }
+    .metric-sub {
+        font-size: 14px;
+        font-weight: 700;
+        color: #C2185B;
+        margin-top: 2px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -144,7 +170,7 @@ else:
     st.markdown(f"""
         <div class="hero-banner">
             <div class="badge-tag">🍦 CONTROL EFECTIVO & PLANOS MULTIUSOS • {fecha_actual}</div>
-            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Gestión de Consignaciones, Datáfonos y QR</h1>
+            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico y Planos Multiusos SAP</h1>
             <p class="hero-sub">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
         </div>
     """, unsafe_allow_html=True)
@@ -248,7 +274,6 @@ else:
             cebe_val = str(row.get('CB_SAP', ''))
             pdv_val = str(row.get('PDV_SAP', ''))
             
-            # Detectar columna de valor numérica
             val_raw = row.get('VALOR_LIMPIO', row.get('VALOR', row.get('VALOR TR', 0)))
             try:
                 valor_val = float(val_raw)
@@ -282,9 +307,6 @@ else:
             
         return pd.DataFrame(filas)[columnas_multiusos]
 
-    # --- NAVEGACIÓN POR PESTAÑAS PRINCIPALES ---
-    tab_cons, tab_dtf, tab_qr = st.tabs(["🏦 1. Consignaciones", "💳 2. Datáfonos", "📱 3. Códigos QR"])
-
     if codigo_sociedad is None:
         st.warning(f"🚧 La sociedad **{sociedad_seleccionada}** se encuentra en proceso de implementación.")
     elif not os.path.exists(nombre_archivo_base):
@@ -303,8 +325,103 @@ else:
             }
 
         # ==========================================
-        # PESTAÑA 1: CONSIGNACIONES (Solo Extracto)
+        # 1. CARGA DEL EXTRACTO Y RESUMEN GENERAL
         # ==========================================
+        st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Bancario General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_extract")
+        
+        if uploaded_multicash_gen:
+            try:
+                if uploaded_multicash_gen.name.lower().endswith(('.xlsx', '.xls')):
+                    df_ext_gen = pd.read_excel(uploaded_multicash_gen)
+                else:
+                    df_ext_gen = pd.read_csv(uploaded_multicash_gen, encoding='latin1')
+                    
+                df_ext_gen.columns = [str(c).strip().upper() for c in df_ext_gen.columns]
+                cols_lower = [str(c).lower() for c in df_ext_gen.columns]
+                col_val_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
+                
+                df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0) if col_val_gen else 0.0
+                col_ref_gen = df_ext_gen.columns[min(9, len(df_ext_gen.columns) - 1)]
+                
+                def clasificar_gen(row):
+                    ref_text = str(row.get(col_ref_gen, '')).strip().upper()
+                    if ref_text in mapa_multicash:
+                        info = mapa_multicash[ref_text]
+                        return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    for k, info in mapa_multicash.items():
+                        if k and k in ref_text:
+                            return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    return 'POR IDENTIFICAR', '', ''
+
+                res_gen = df_ext_gen.apply(clasificar_gen, axis=1)
+                df_ext_gen['TIPO'] = [r[0] for r in res_gen]
+                df_ext_gen['PDV_SAP'] = [r[1] for r in res_gen]
+                df_ext_gen['CB_SAP'] = [r[2] for r in res_gen]
+                
+                tot_reg = len(df_ext_gen)
+                tot_monto = df_ext_gen['VALOR_LIMPIO'].sum()
+                
+                df_c_gen = df_ext_gen[df_ext_gen['TIPO'] == 'Consignaciones']
+                df_d_gen = df_ext_gen[df_ext_gen['TIPO'] == 'Datafonos']
+                df_q_gen = df_ext_gen[df_ext_gen['TIPO'] == 'QR']
+                df_p_gen = df_ext_gen[df_ext_gen['TIPO'] == 'POR IDENTIFICAR']
+                
+                st.markdown("#### 📊 Resumen Ejecutivo del Extracto")
+                c1, c2, c3, c4, c5 = st.columns(5)
+                
+                with c1:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Total Extracto</div>
+                            <div class="metric-val">{tot_reg} part.</div>
+                            <div class="metric-sub">${tot_monto:,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Consignaciones</div>
+                            <div class="metric-val">{len(df_c_gen)} part.</div>
+                            <div class="metric-sub">${df_c_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Datáfonos</div>
+                            <div class="metric-val">{len(df_d_gen)} part.</div>
+                            <div class="metric-sub">${df_d_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c4:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">QR</div>
+                            <div class="metric-val">{len(df_q_gen)} part.</div>
+                            <div class="metric-sub">${df_q_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c5:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Por Identificar</div>
+                            <div class="metric-val">{len(df_p_gen)} part.</div>
+                            <div class="metric-sub" style="color: #DC2626;">${df_p_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+            except Exception as e:
+                st.error(f"Error procesando resumen general: {e}")
+
+        st.markdown("<br><hr><br>", unsafe_allow_html=True)
+
+        # ==========================================
+        # 2. PESTAÑAS INDEPENDIENTES Y PLANOS MULTIUSOS
+        # ==========================================
+        tab_cons, tab_dtf, tab_qr = st.tabs(["🏦 1. Consignaciones", "💳 2. Datáfonos", "📱 3. Códigos QR"])
+
+        # PESTAÑA 1: CONSIGNACIONES
         with tab_cons:
             st.markdown(f"### 🏦 Módulo de Consignaciones • {sociedad_seleccionada}")
             st.markdown("Sube el **Extracto Bancario / Multicash** para procesar las consignaciones y generar su Plano Multiusos SAP.")
@@ -363,9 +480,7 @@ else:
                 except Exception as e:
                     st.error(f"Error procesando consignaciones: {e}")
 
-        # ==========================================
-        # PESTAÑA 2: DATÁFONOS (Archivo Independiente)
-        # ==========================================
+        # PESTAÑA 2: DATÁFONOS
         with tab_dtf:
             st.markdown(f"### 💳 Módulo de Datáfonos • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Datáfonos / Pasarelas** independiente para generar su respectivo Plano Multiusos SAP.")
@@ -424,9 +539,7 @@ else:
                 except Exception as e:
                     st.error(f"Error procesando datáfonos: {e}")
 
-        # ==========================================
-        # PESTAÑA 3: CÓDIGOS QR (Archivo Independiente)
-        # ==========================================
+        # PESTAÑA 3: CÓDIGOS QR
         with tab_qr:
             st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Códigos QR** independiente para generar su respectivo Plano Multiusos SAP.")
