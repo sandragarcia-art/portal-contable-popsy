@@ -411,9 +411,8 @@ else:
         fecha_hoy = datetime.now().strftime('%d.%m.%Y')
         nit_corporativo = "8600538311"
         
-        # Mapeo de nombres de columnas del plano QR a la matriz base
         mapa_columnas_vlr = {
-            'Vlr Abono': 'VLR TOTAL', # o el equivalente de abono si viene en QR
+            'Vlr Abono': 'VALOR TOTAL',
             'Vlr Comision': 'VALOR COMISION',
             'Vlr Total': 'VALOR TOTAL',
             'Vlr Rete Fuente': 'VALOR RETE FUENTE',
@@ -422,15 +421,15 @@ else:
         }
 
         for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
-            comercio_val = str(row.get('CODIGO UNICO', row.get('COMERCIO', idx))).strip()
+            comercio_val = str(row.get('CODIGO UNICO', idx)).strip()
             
-            # Fecha de proceso como fecha doc y fecha reg
+            # Fecha de proceso (YYYYMMDD) convertida a DD.MM.YYYY
             fecha_doc = fecha_hoy
-            val_fec = row.get('FECHA DE PROCESO', row.get('FECHA PROCESO', None))
+            val_fec = row.get('FECHA DE PROCESO', None)
             if pd.notna(val_fec):
                 try:
-                    fec_str = str(val_fec).strip()
-                    parsed = pd.to_datetime(fec_str)
+                    fec_str = str(int(val_fec)) if isinstance(val_fec, (int, float)) else str(val_fec).strip()
+                    parsed = pd.to_datetime(fec_str, format='%Y%m%d', errors='coerce')
                     if pd.notna(parsed):
                         fecha_doc = parsed.strftime('%d.%m.%Y')
                 except:
@@ -439,10 +438,9 @@ else:
             pdv_val = str(row.get('PDV_SAP', ''))
             cebe_val = str(row.get('CB', ''))
             
-            # Filtrar matriz base para TRN 6 (Ventas)
             filas_matriz = df_matriz_dtf[df_matriz_dtf['TRN'] == 6]
             if len(filas_matriz) == 0:
-                filas_matriz = df_matriz_dtf # por si no tiene columna TRN
+                filas_matriz = df_matriz_dtf
             
             pos_efectiva = 1
             for _, m_row in filas_matriz.iterrows():
@@ -450,7 +448,6 @@ else:
                 cuenta_sap = int(m_row['CUENTA SAP'])
                 cc_sap = int(m_row['CC SAP'])
                 
-                # Buscar columna correspondiente en el plano QR
                 col_plano = None
                 for k, v in mapa_columnas_vlr.items():
                     if k.lower() in tipo_cta.lower():
@@ -533,7 +530,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v16")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v17")
         
         if uploaded_multicash_gen:
             try:
@@ -773,16 +770,14 @@ else:
         if maneja_qr and tab_qr is not None:
             with tab_qr:
                 st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
-                st.markdown("Sube el **Archivo Plano de Códigos QR** para procesarlo con la matriz de cuentas y generar automáticamente el Plano Multiusos SAP.")
+                st.markdown("Sube el **Archivo Plano de Códigos QR (CSV con separador `|`)** para procesarlo con la matriz de cuentas y generar automáticamente el Plano Multiusos SAP.")
                 
-                uploaded_qr = st.file_uploader("Sube el Archivo Plano de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_final")
+                uploaded_qr = st.file_uploader("Sube el Archivo Plano de Códigos QR", type=["csv", "txt"], key="up_qr_final")
                 
                 if uploaded_qr:
                     try:
-                        if uploaded_qr.name.lower().endswith(('.xlsx', '.xls')):
-                            df_q_raw = pd.read_excel(uploaded_qr)
-                        else:
-                            df_q_raw = pd.read_csv(uploaded_qr, encoding='latin1')
+                        # Leer archivo plano delimitado por pipe (|)
+                        df_q_raw = pd.read_csv(uploaded_qr, encoding='latin1', sep='|')
                             
                         df_q_raw.columns = [str(c).strip().upper() for c in df_q_raw.columns]
                         cols_lower = [str(c).lower() for c in df_q_raw.columns]
@@ -791,8 +786,8 @@ else:
                         df_q_raw['VALOR_LIMPIO'] = pd.to_numeric(df_q_raw[col_val_qr], errors='coerce').fillna(0) if col_val_qr else 0.0
                         
                         def mapear_comercio_qr(row):
-                            comercio = str(row.get('CODIGO UNICO', row.get('COMERCIO', ''))).strip()
-                            terminal = str(row.get('NUMERO DE TERMINAL', row.get('TERMINAL', ''))).strip()
+                            comercio = str(row.get('CODIGO UNICO', '')).strip()
+                            terminal = str(row.get('NUMERO DE TERMINAL', '')).strip()
                             if (comercio, terminal) in mapa_comercios:
                                 info = mapa_comercios[(comercio, terminal)]
                                 return info['pdv_sap'], info['cb']
@@ -807,11 +802,11 @@ else:
                         
                         df_no_homologados_q = df_q_raw[df_q_raw['PDV_SAP'] == '']
                         if len(df_no_homologados_q) > 0:
-                            comercios_unicos_q = df_no_homologados_q[['CODIGO UNICO']].drop_duplicates()
-                            lista_advertencia_q = ", ".join([str(r['CODIGO UNICO']) for _, r in comercios_unicos_q.iterrows()])
+                            comercios_unicos_q = df_no_homologados_q[['CODIGO UNICO', 'NUMERO DE TERMINAL']].drop_duplicates()
+                            lista_advertencia_q = ", ".join([f"Comercio: {r['CODIGO UNICO']} (Terminal: {r['NUMERO DE TERMINAL']})" for _, r in comercios_unicos_q.iterrows()])
                             st.markdown(f"""
                                 <div style="background-color: #F8D7DA; color: #721C24; padding: 15px; border-radius: 10px; border-left: 6px solid #F5C6CB; margin-bottom: 20px;">
-                                    <b>⚠️ Alerta de Homologación QR:</b> Se detectaron <b>{len(df_no_homologados_q)}</b> registros cuyos códigos únicos no están en el archivo maestro <code>{nombre_archivo_comercios}</code>.<br>
+                                    <b>⚠️ Alerta de Homologación QR:</b> Se detectaron <b>{len(df_no_homologados_q)}</b> registros cuyos códigos no están en el maestro <code>{nombre_archivo_comercios}</code>.<br>
                                     <br><b>Códigos faltantes:</b> {lista_advertencia_q}<br>
                                 </div>
                             """, unsafe_allow_html=True)
