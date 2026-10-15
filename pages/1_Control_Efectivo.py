@@ -621,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v35")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v36")
         
         if uploaded_multicash_gen:
             try:
@@ -666,7 +666,7 @@ else:
                 with c1:
                     st.markdown(f"""
                         <div class="metric-card">
-                            <div class="metric-title">Total Extracto</div>
+                            <div class="metric-title">TOTAL EXTRACTO</div>
                             <div class="metric-val">{tot_reg} part.</div>
                             <div class="metric-sub">${tot_monto:,.2f}</div>
                         </div>
@@ -674,7 +674,7 @@ else:
                 with c2:
                     st.markdown(f"""
                         <div class="metric-card">
-                            <div class="metric-title">Consignaciones</div>
+                            <div class="metric-title">CONSIGNACIONES</div>
                             <div class="metric-val">{len(df_c_gen)} part.</div>
                             <div class="metric-sub">${df_c_gen['VALOR_LIMPIO'].sum():,.2f}</div>
                         </div>
@@ -682,7 +682,7 @@ else:
                 with c3:
                     st.markdown(f"""
                         <div class="metric-card">
-                            <div class="metric-title">Datáfonos</div>
+                            <div class="metric-title">DATÁFONOS</div>
                             <div class="metric-val">{len(df_d_gen)} part.</div>
                             <div class="metric-sub">${df_d_gen['VALOR_LIMPIO'].sum():,.2f}</div>
                         </div>
@@ -707,7 +707,7 @@ else:
                 with c5:
                     st.markdown(f"""
                         <div class="metric-card">
-                            <div class="metric-title">Por Identificar</div>
+                            <div class="metric-title">POR IDENTIFICAR</div>
                             <div class="metric-val">{len(df_p_gen)} part.</div>
                             <div class="metric-sub" style="color: #DC2626;">${df_p_gen['VALOR_LIMPIO'].sum():,.2f}</div>
                         </div>
@@ -715,21 +715,29 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DASHBOARD VISUALIZACIÓN GRÁFICA PROFESIONAL ---
+                # --- DASHBOARD VISUALIZACIÓN GRÁFICA EXACTA ---
                 col_chart1, col_chart2 = st.columns(2)
-                popsy_colors = ['#C2185B', '#E91E63', '#F48FB1', '#6B7280', '#9CA3AF']
+                
+                # Mapeo de colores exacto para la dona de Recaudo por Canal
+                color_domain = ['Consignaciones', 'Datafonos', 'POR IDENTIFICAR', 'QR']
+                color_range = ['#111827', '#059669', '#C2185B', '#D97706']
 
                 with col_chart1:
-                    st.markdown("#### 🥧 Distribución de Partidas por Tipificación")
+                    st.markdown("#### 🍩 Distribución de Recaudo por Canal")
                     df_pie = df_ext_gen.groupby('TIPO').agg(
-                        Cantidad=('VALOR_LIMPIO', 'count'),
-                        Monto=('VALOR_LIMPIO', 'sum')
+                        Monto=('VALOR_LIMPIO', 'sum'),
+                        Cantidad=('VALOR_LIMPIO', 'count')
                     ).reset_index()
                     
-                    chart_pie = alt.Chart(df_pie).mark_arc(innerRadius=65, outerRadius=105, stroke='#FFFFFF', strokeWidth=2).encode(
-                        theta=alt.Theta(field="Cantidad", type="quantitative"),
-                        color=alt.Color(field="TIPO", type="nominal", scale=alt.Scale(range=popsy_colors), legend=alt.Legend(title="Tipificación", orient="bottom")),
-                        tooltip=['TIPO', 'Cantidad', alt.Tooltip('Monto', format="$,.2f", title="Monto Total (COP)")]
+                    chart_pie = alt.Chart(df_pie).mark_arc(innerRadius=70, outerRadius=110, stroke='#FFFFFF', strokeWidth=2).encode(
+                        theta=alt.Theta(field="Monto", type="quantitative"),
+                        color=alt.Color(
+                            field="TIPO", 
+                            type="nominal", 
+                            scale=alt.Scale(domain=color_domain, range=color_range), 
+                            legend=alt.Legend(title="Canal", orient="bottom")
+                        ),
+                        tooltip=['TIPO', alt.Tooltip('Monto', format="$,.2f", title="Monto Total"), 'Cantidad']
                     ).properties(height=320).configure_view(strokeWidth=0)
                     
                     st.altair_chart(chart_pie, use_container_width=True)
