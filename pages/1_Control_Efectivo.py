@@ -326,7 +326,7 @@ else:
 
         for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
             trn_val = int(row.get('TRN', 6))
-            ref_val = str(row.get('AUTORIZACION', row.get('COMPROBANTE', idx))).strip()
+            comercio_val = str(row.get('COMERCIO', idx)).strip()
             
             fecha_doc = fecha_hoy
             val_fec = row.get('F ABONO', row.get('F PROCESO', None))
@@ -362,7 +362,7 @@ else:
                 p.update({
                     'ID': idx, 'FECHA DOC': fecha_doc, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
                     'FECHA CONT': fecha_doc, 'FECHA REG': fecha_doc, 'MONEDA TR': 'COP',
-                    'REFERENCIA': ref_val, 'TEXTO CABECERA': f"DTF {ref_val}",
+                    'REFERENCIA': comercio_val, 'TEXTO CABECERA': f"DTF {comercio_val}",
                     'IDENTIFICADOR PI': idx, 'POSICION': pos_i, 'CLAVE CONTABILIZACION': cc_sap,
                     'CUENTA DE MAYOR': cuenta_sap, 'VALOR TR': valor_val, 'CEBE': cebe_val,
                     'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_pos
@@ -420,7 +420,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v10")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v12")
         
         if uploaded_multicash_gen:
             try:
@@ -606,6 +606,19 @@ else:
                     df_d_raw['PDV_SAP'] = [r[0] for r in res_d]
                     df_d_raw['CB'] = [r[1] for r in res_d]
                     
+                    # Validación y alerta inteligente de comercios no homologados
+                    df_no_homologados = df_d_raw[df_d_raw['PDV_SAP'] == '']
+                    if len(df_no_homologados) > 0:
+                        comercios_unicos = df_no_homologados[['COMERCIO', 'TERMINAL']].drop_duplicates()
+                        lista_advertencia = ", ".join([f"Comercio: {r['COMERCIO']} (Terminal: {r['TERMINAL']})" for _, r in comercios_unicos.iterrows()])
+                        st.markdown(f"""
+                            <div style="background-color: #F8D7DA; color: #721C24; padding: 15px; border-radius: 10px; border-left: 6px solid #F5C6CB; margin-bottom: 20px;">
+                                <b>⚠️ Alerta de Homologación:</b> Se detectaron <b>{len(df_no_homologados)}</b> registros cuyos comercios no están en el archivo maestro <code>Comercio Datafonos.xlsx</code>.<br>
+                                <br><b>Comercios faltantes:</b> {lista_advertencia}<br>
+                                <i>Por favor agrégalos a tu archivo maestro en GitHub para que queden mapeados correctamente.</i>
+                            </div>
+                        """, unsafe_allow_html=True)
+
                     st.metric("Total Transacciones Datáfonos", f"{len(df_d_raw)} registros", f"${df_d_raw['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
