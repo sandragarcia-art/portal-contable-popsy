@@ -163,7 +163,7 @@ else:
     st.markdown(f"""
         <div class="hero-banner">
             <div class="badge-tag">🍦 CONTROL EFECTIVO, BANCOS & PLANOS • {fecha_actual}</div>
-            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Cruce Bancario BUSCARV y Planos SAP</h1>
+            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Cruce Bancario BUSCARV (Columna B a Columna A/D)</h1>
             <p class="hero-sub">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
         </div>
     """, unsafe_allow_html=True)
@@ -620,26 +620,25 @@ else:
                     'cb': r.get('CB', '')
                 }
 
-        # Cargar maestro de cuentas de bancos (BUSCARV)
+        # --- CARGAR ARCHIVO DE CUENTAS BANCOS (Columna A = Cuenta, Columna D = Nombre Banco) ---
         df_cuentas_bancos = pd.read_excel(nombre_archivo_cuentas_bancos)
-        df_cuentas_bancos.columns = [str(c).strip().upper() for c in df_cuentas_bancos.columns]
         
-        # Identificar columnas en la base de cuentas de bancos
-        col_cta_banco = next((c for c in df_cuentas_bancos.columns if 'cuenta' in c.lower() or 'numero' in c.lower() or 'cta' in c.lower()), df_cuentas_bancos.columns[0])
-        col_nom_banco = next((c for c in df_cuentas_bancos.columns if 'banco' in c.lower() or 'nombre' in c.lower() or 'entidad' in c.lower()), df_cuentas_bancos.columns[min(1, len(df_cuentas_bancos.columns)-1)])
+        # Tomamos explícitamente la Columna A (índice 0) como Cuenta y la Columna D (índice 3 si existe, sino la última) como Nombre del Banco
+        col_cuenta_base = df_cuentas_bancos.columns[0]
+        col_banco_base = df_cuentas_bancos.columns[3] if len(df_cuentas_bancos.columns) > 3 else df_cuentas_bancos.columns[-1]
         
         mapa_bancos_buscarv = {}
         for _, r in df_cuentas_bancos.iterrows():
-            cta_val = str(r.get(col_cta_banco, '')).strip()
-            nom_val = str(r.get(col_nom_banco, '')).strip()
-            if cta_val:
-                mapa_bancos_buscarv[cta_val] = nom_val
+            cta_val = str(r.get(col_cuenta_base, '')).strip()
+            banco_val = str(r.get(col_banco_base, '')).strip()
+            if cta_val and cta_val.lower() != 'nan':
+                mapa_bancos_buscarv[cta_val] = banco_val
 
         # ==========================================
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v27")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v28")
         
         if uploaded_multicash_gen:
             try:
@@ -652,7 +651,9 @@ else:
                 cols_lower = [str(c).lower() for c in df_ext_gen.columns]
                 
                 col_val_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
-                col_cta_ext = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'cta' in c or 'banco' in c), df_ext_gen.columns[1] if len(df_ext_gen.columns) > 1 else None)
+                
+                # Seleccionamos explícitamente la Columna B (índice 1) del Multicash para la cuenta
+                col_cta_multicash = df_ext_gen.columns[1] if len(df_ext_gen.columns) > 1 else df_ext_gen.columns[0]
                 
                 df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0) if col_val_gen else 0.0
                 col_ref_gen = df_ext_gen.columns[min(9, len(df_ext_gen.columns) - 1)]
@@ -672,13 +673,12 @@ else:
                 df_ext_gen['PDV_SAP'] = [r[1] for r in res_gen]
                 df_ext_gen['CB_SAP'] = [r[2] for r in res_gen]
                 
-                # --- BUSCARV AUTOMÁTICO CON LA BASE DE BANCOS ---
+                # --- BUSCARV EXACTO: Columna B del Multicash con Columna A / Columna D de Base Cuentas ---
                 def aplicar_buscarv_banco(row):
-                    if col_cta_ext and col_cta_ext in row and pd.notna(row[col_cta_ext]):
-                        cta_str = str(row[col_cta_ext]).strip()
-                        if cta_str in mapa_bancos_buscarv:
-                            return mapa_bancos_buscarv[cta_str]
-                    return 'BANCO PRINCIPAL / OTRO'
+                    cta_multicash_val = str(row.get(col_cta_multicash, '')).strip()
+                    if cta_multicash_val in mapa_bancos_buscarv:
+                        return mapa_bancos_buscarv[cta_multicash_val]
+                    return 'SIN IDENTIFICAR'
 
                 df_ext_gen['BANCO'] = df_ext_gen.apply(aplicar_buscarv_banco, axis=1)
                 
@@ -745,8 +745,8 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DESGLOSE Y FILTRO POR BANCO (VÍA BUSCARV) ---
-                st.markdown("#### 🏦 Desglose de Recaudo por Banco (Obtenido de 'Cuentas bancos.xlsx')")
+                # --- DESGLOSE Y FILTRO POR BANCO (VÍA BUSCARV COL B -> COL A/D) ---
+                st.markdown("#### 🏦 Desglose de Recaudo por Banco (Vía BUSCARV Columna B de Multicash)")
                 df_bancos_sum = df_ext_gen.groupby('BANCO').agg(
                     Partidas=('VALOR_LIMPIO', 'count'),
                     Monto_Total=('VALOR_LIMPIO', 'sum')
@@ -842,7 +842,7 @@ else:
                     cols_lower = [str(c).lower() for c in df_c_raw.columns]
                     
                     col_val = next((df_c_raw.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
-                    col_cta_c = next((df_c_raw.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'cta' in c or 'banco' in c), df_c_raw.columns[1] if len(df_c_raw.columns) > 1 else None)
+                    col_cta_cons = df_c_raw.columns[1] if len(df_c_raw.columns) > 1 else df_c_raw.columns[0]
                     col_ref = df_c_raw.columns[min(9, len(df_c_raw.columns) - 1)]
                     
                     df_c_raw['VALOR_LIMPIO'] = pd.to_numeric(df_c_raw[col_val], errors='coerce').fillna(0) if col_val else 0.0
@@ -861,11 +861,10 @@ else:
                     
                     # BUSCARV PARA CONSIGNACIONES
                     def buscarv_c_banco(row):
-                        if col_cta_c and col_cta_c in row and pd.notna(row[col_cta_c]):
-                            cta_str = str(row[col_cta_c]).strip()
-                            if cta_str in mapa_bancos_buscarv:
-                                return mapa_bancos_buscarv[cta_str]
-                        return 'BANCO PRINCIPAL / OTRO'
+                        cta_val = str(row.get(col_cta_cons, '')).strip()
+                        if cta_val in mapa_bancos_buscarv:
+                            return mapa_bancos_buscarv[cta_val]
+                        return 'SIN IDENTIFICAR'
 
                     df_c_raw['BANCO'] = df_c_raw.apply(buscarv_c_banco, axis=1)
                     df_c_filtrado = df_c_raw[df_c_raw['ES_C'] == 'SI']
