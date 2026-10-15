@@ -143,8 +143,8 @@ else:
     fecha_actual = datetime.now().strftime('%A, %d de %B de %Y').capitalize()
     st.markdown(f"""
         <div class="hero-banner">
-            <div class="badge-tag">🍦 CONTROL EFECTIVO & MULTICASH • {fecha_actual}</div>
-            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico y Totales por Categoría</h1>
+            <div class="badge-tag">🍦 CONTROL EFECTIVO & PLANOS MULTIUSOS • {fecha_actual}</div>
+            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Gestión de Consignaciones, Datáfonos y QR</h1>
             <p class="hero-sub">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
         </div>
     """, unsafe_allow_html=True)
@@ -177,118 +177,310 @@ else:
     else:
         codigo_sociedad = None
 
-    # --- CARGA DEL EXTRACTO Y CLASIFICACIÓN CON BASE UNIFICADA ---
-    st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario • {sociedad_seleccionada}")
-    
+    def aplicar_estilos_excel_bytes(wb):
+        NAVY_HEADER = "003366"
+        WHITE_TEXT = "FFFFFF"
+        ZEBRA_FILL = "F2F5F9"
+        BORDER_COLOR = "D9D9D9"
+        
+        thin_border = Border(
+            left=Side(style='thin', color=BORDER_COLOR), right=Side(style='thin', color=BORDER_COLOR),
+            top=Side(style='thin', color=BORDER_COLOR), bottom=Side(style='thin', color=BORDER_COLOR)
+        )
+        
+        for sheetname in wb.sheetnames:
+            ws = wb[sheetname]
+            ws.views.sheetView[0].showGridLines = True
+            
+            if ws.max_row > 0:
+                ws.row_dimensions[1].height = 26
+                for col in range(1, ws.max_column + 1):
+                    cell = ws.cell(row=1, column=col)
+                    cell.font = Font(name='Segoe UI', size=10, bold=True, color=WHITE_TEXT)
+                    cell.fill = PatternFill(start_color=NAVY_HEADER, end_color=NAVY_HEADER, fill_type="solid")
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                    cell.border = thin_border
+                    
+                for row in range(2, ws.max_row + 1):
+                    ws.row_dimensions[row].height = 20
+                    for col in range(1, ws.max_column + 1):
+                        cell = ws.cell(row=row, column=col)
+                        cell.font = Font(name='Segoe UI', size=10)
+                        cell.border = thin_border
+                        if row % 2 == 0:
+                            cell.fill = PatternFill(start_color=ZEBRA_FILL, end_color=ZEBRA_FILL, fill_type="solid")
+                            
+                for col in ws.columns:
+                    max_len = max(len(str(cell.value or '')) for cell in col)
+                    col_letter = get_column_letter(col[0].column)
+                    ws.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 40)
+        return wb
+
+    def generar_plano_multiusos(df_filtrado, tipo_prefijo, codigo_sociedad):
+        columnas_multiusos = [
+            'ID', 'USUARIO', 'LEDGER', 'FECHA DOC', 'CLASE DOCUMENTO', 'SOCIEDAD', 'FECHA CONT',
+            'FECHA REG', 'MONEDA TR', 'TASA DE CAMBIO', 'REFERENCIA', 'TEXTO CABECERA',
+            'IDENTIFICADOR PI', 'POSICION', 'CLAVE CONTABILIZACION', 'CUENTA DE MAYOR',
+            'CLASE DE CUENTA', 'PROVEEDOR', 'CLIENTE', 'PAGADOR ALTERNATIVO', 'INDICADOR CME',
+            'VALOR TR', 'IND IVA', 'CALCULAR IMP. AUTOMATICO', 'FECHA BASE', 'CONDICION PAGO',
+            'FECHA VALOR', 'Orden de Compra', 'Posicion OC', 'ORDEN', 'CECO', 'CEBE', 'GRAFO',
+            'OPERACION GRAFO', 'ELEMENTO PEP', 'ASIGNACION', 'CLAVE DE REF_1', 'CLAVE DE REF_2',
+            'CLAVE DE REF_3', 'TEXTO POSICION', 'INDICADOR TP. RETENCIONES 1', 'INDICADOR RETENCION  1',
+            'BASE RETENCION 1', 'BASE RETENCION DOC 1', 'INDICADOR TP. RETENCIONES 2', 'INDICADOR RETENCION  2',
+            'BASE RETENCION 2', 'BASE RETENCION DOC 2', 'INDICADOR TP. RETENCIONES 3', 'INDICADOR RETENCION  3',
+            'BASE RETENCION 3', 'BASE RETENCION DOC 3', 'INDICADOR TP. RETENCIONES 4', 'INDICADOR RETENCION  4',
+            'BASE RETENCION 4', 'BASE RETENCION DOC4', 'INDICADOR TP. RETENCIONES 5', 'INDICADOR RETENCION  5',
+            'BASE RETENCION 5', 'BASE RETENCION DOC 5', 'AÑO', 'MES', 'MONEDA', 'OBJETO COSTO',
+            'CLASE DE ACTIVIDAD', 'POSICION DE LA ORDEN', 'HOJA DE RUTA', 'SEGMENTO', 'PRODUCTO',
+            'OF VENTAS', 'CLIENTE CAR', 'CLASE MEDIO DE TRANSPORTE', 'ZONA', 'MEDIO DE TRANSPORTE',
+            'GRUPO MATERIAL 1', 'GRUPO MATERIAL 2', 'GRUPO MATERIAL 3', 'GRUPO MATERIAL 4',
+            'VALOR LC', 'FECHA RFERENCIA PAGO', 'DOCUMENTO REFERENCIA', 'FECHA REFERENCIA', 'BLOQUEO PAGO'
+        ]
+        
+        filas = []
+        fecha_hoy = datetime.now().strftime('%d.%m.%Y')
+        cuenta_banco_default = '11100511'
+        cuenta_ingreso_default = '11050502'
+        nit_corporativo = "8600538311"
+        
+        for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
+            ref_val = str(row.get('TEXTO MULTICAHS', row.get('REFERENCIA', row.iloc[0]))).strip()
+            cebe_val = str(row.get('CB_SAP', ''))
+            pdv_val = str(row.get('PDV_SAP', ''))
+            
+            # Detectar columna de valor numérica
+            val_raw = row.get('VALOR_LIMPIO', row.get('VALOR', row.get('VALOR TR', 0)))
+            try:
+                valor_val = float(val_raw)
+            except:
+                valor_val = 0.0
+                
+            texto_pos = f"{fecha_hoy} {tipo_prefijo} {pdv_val}"
+            
+            p1 = {c: None for c in columnas_multiusos}
+            p1.update({
+                'ID': idx, 'FECHA DOC': fecha_hoy, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
+                'FECHA CONT': fecha_hoy, 'FECHA REG': fecha_hoy, 'MONEDA TR': 'COP',
+                'REFERENCIA': ref_val, 'TEXTO CABECERA': f"{tipo_prefijo} {ref_val}",
+                'IDENTIFICADOR PI': idx, 'POSICION': 1, 'CLAVE CONTABILIZACION': 50,
+                'CUENTA DE MAYOR': int(cuenta_banco_default), 'VALOR TR': valor_val, 'CEBE': cebe_val,
+                'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_pos
+            })
+            
+            p2 = {c: None for c in columnas_multiusos}
+            p2.update({
+                'ID': idx, 'FECHA DOC': fecha_hoy, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
+                'FECHA CONT': fecha_hoy, 'FECHA REG': fecha_hoy, 'MONEDA TR': 'COP',
+                'REFERENCIA': ref_val, 'TEXTO CABECERA': f"{tipo_prefijo} {ref_val}",
+                'IDENTIFICADOR PI': idx, 'POSICION': 2, 'CLAVE CONTABILIZACION': 40,
+                'CUENTA DE MAYOR': int(cuenta_ingreso_default), 'VALOR TR': valor_val, 'CEBE': cebe_val,
+                'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_pos
+            })
+            
+            filas.append(p1)
+            filas.append(p2)
+            
+        return pd.DataFrame(filas)[columnas_multiusos]
+
+    # --- NAVEGACIÓN POR PESTAÑAS PRINCIPALES ---
+    tab_cons, tab_dtf, tab_qr = st.tabs(["🏦 1. Consignaciones", "💳 2. Datáfonos", "📱 3. Códigos QR"])
+
     if codigo_sociedad is None:
         st.warning(f"🚧 La sociedad **{sociedad_seleccionada}** se encuentra en proceso de implementación.")
     elif not os.path.exists(nombre_archivo_base):
         st.error(f"⚠️ No se encontró el archivo maestro '{nombre_archivo_base}' en la raíz del repositorio.")
     else:
-        st.success(f"📁 Archivo maestro de referencia cargado: **{nombre_archivo_base}** (Sociedad: {codigo_sociedad})")
+        df_base_tiendas = pd.read_excel(nombre_archivo_base, sheet_name='Hoja1')
+        df_base_tiendas.columns = [str(c).strip().upper() for c in df_base_tiendas.columns]
+        df_base_tiendas['TEXTO_CLEAN'] = df_base_tiendas['TEXTO MULTICAHS'].astype(str).str.strip().str.upper()
         
-        uploaded_multicash = st.file_uploader(f"Sube el Extracto Bancario para Diagnóstico y Procesamiento ({sociedad_seleccionada})", type=["xlsx", "XLSX", "xls"], key="diag_multicash_v4")
+        mapa_multicash = {}
+        for _, r in df_base_tiendas.iterrows():
+            mapa_multicash[r['TEXTO_CLEAN']] = {
+                'cb_sap': r.get('CB SAP', ''),
+                'pdv_sap': r.get('PDV SAP', ''),
+                'tipificacion': r.get('TIPIFICACION', '')
+            }
 
-        if uploaded_multicash:
-            try:
-                # Cargar pestañas de la base unificada
-                df_base_tiendas = pd.read_excel(nombre_archivo_base, sheet_name='Hoja1')
-                df_cuentas_bancos = pd.read_excel(nombre_archivo_base, sheet_name='Cuentas_Bancos')
-                
-                # Cargar extracto soportando mayúsculas y minúsculas en extensión
-                if uploaded_multicash.name.lower().endswith(('.xlsx', '.xls')):
-                    df_extracto = pd.read_excel(uploaded_multicash)
-                else:
-                    df_extracto = pd.read_csv(uploaded_multicash, encoding='latin1')
-                
-                # Normalizar nombres de columnas
-                df_base_tiendas.columns = [str(c).strip().upper() for c in df_base_tiendas.columns]
-                df_cuentas_bancos.columns = [str(c).strip().upper() for c in df_cuentas_bancos.columns]
-                df_extracto.columns = [str(c).strip().upper() for c in df_extracto.columns]
-                
-                # Identificar columna de valores/monto automáticamente
-                cols_lower = [str(c).lower() for c in df_extracto.columns]
-                col_valor_name = next((df_extracto.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
-                
-                if col_valor_name:
-                    df_extracto['VALOR_LIMPIO'] = pd.to_numeric(df_extracto[col_valor_name], errors='coerce').fillna(0)
-                else:
-                    # Si no encuentra columna obvia, toma una numérica o la última
-                    df_extracto['VALOR_LIMPIO'] = 0.0
-
-                # Mapa de búsqueda por TEXTO MULTICASH
-                df_base_tiendas['TEXTO_CLEAN'] = df_base_tiendas['TEXTO MULTICAHS'].astype(str).str.strip().str.upper()
-                mapa_multicash = {}
-                for _, r in df_base_tiendas.iterrows():
-                    mapa_multicash[r['TEXTO_CLEAN']] = {
-                        'cb_sap': r.get('CB SAP', ''),
-                        'pdv_sap': r.get('PDV SAP', ''),
-                        'tipificacion': r.get('TIPIFICACION', '')
-                    }
+        # ==========================================
+        # PESTAÑA 1: CONSIGNACIONES (Solo Extracto)
+        # ==========================================
+        with tab_cons:
+            st.markdown(f"### 🏦 Módulo de Consignaciones • {sociedad_seleccionada}")
+            st.markdown("Sube el **Extracto Bancario / Multicash** para procesar las consignaciones y generar su Plano Multiusos SAP.")
+            
+            uploaded_multicash_cons = st.file_uploader("Sube el Extracto Bancario (Consignaciones)", type=["xlsx", "XLSX", "xls", "csv"], key="up_cons")
+            
+            if uploaded_multicash_cons:
+                try:
+                    if uploaded_multicash_cons.name.lower().endswith(('.xlsx', '.xls')):
+                        df_extracto = pd.read_excel(uploaded_multicash_cons)
+                    else:
+                        df_extracto = pd.read_csv(uploaded_multicash_cons, encoding='latin1')
+                        
+                    df_extracto.columns = [str(c).strip().upper() for c in df_extracto.columns]
+                    cols_lower = [str(c).lower() for c in df_extracto.columns]
+                    col_valor_name = next((df_extracto.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
                     
-                col_ref_ext = df_extracto.columns[min(9, len(df_extracto.columns) - 1)]
-                
-                def clasificar_con_maestra(row):
-                    ref_text = str(row.get(col_ref_ext, '')).strip().upper()
+                    df_extracto['VALOR_LIMPIO'] = pd.to_numeric(df_extracto[col_valor_name], errors='coerce').fillna(0) if col_valor_name else 0.0
+                    col_ref_ext = df_extracto.columns[min(9, len(df_extracto.columns) - 1)]
                     
-                    if ref_text in mapa_multicash:
-                        info = mapa_multicash[ref_text]
-                        return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    def filtrar_cons(row):
+                        ref_text = str(row.get(col_ref_ext, '')).strip().upper()
+                        if ref_text in mapa_multicash and mapa_multicash[ref_text]['tipificacion'] == 'Consignaciones':
+                            return 'SI', mapa_multicash[ref_text]['pdv_sap'], mapa_multicash[ref_text]['cb_sap']
+                        return 'NO', '', ''
+
+                    res = df_extracto.apply(filtrar_cons, axis=1)
+                    df_extracto['ES_CONS'] = [r[0] for r in res]
+                    df_extracto['PDV_SAP'] = [r[1] for r in res]
+                    df_extracto['CB_SAP'] = [r[2] for r in res]
                     
-                    for k, info in mapa_multicash.items():
-                        if k and k in ref_text:
-                            return info['tipificacion'], info['pdv_sap'], info['cb_sap']
-                            
-                    return 'POR IDENTIFICAR', '', ''
+                    df_cons_filtrado = df_extracto[df_extracto['ES_CONS'] == 'SI']
+                    
+                    st.metric("Total Consignaciones Detectadas", f"{len(df_cons_filtrado)} registros", f"${df_cons_filtrado['VALOR_LIMPIO'].sum():,.2f}")
+                    st.dataframe(df_cons_filtrado, use_container_width=True)
+                    
+                    if len(df_cons_filtrado) > 0:
+                        plano_c = generar_plano_multiusos(df_cons_filtrado, "CG", codigo_sociedad)
+                        out_c = io.BytesIO()
+                        with pd.ExcelWriter(out_c, engine='openpyxl') as w:
+                            plano_c.to_excel(w, sheet_name='Multiusos_Consignaciones', index=False)
+                        out_c.seek(0)
+                        wb_c = openpyxl.load_workbook(out_c)
+                        wb_c_est = aplicar_estilos_excel_bytes(wb_c)
+                        final_c = io.BytesIO()
+                        wb_c_est.save(final_c)
+                        final_c.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
+                            data=final_c,
+                            file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_cons_btn"
+                        )
+                except Exception as e:
+                    st.error(f"Error procesando consignaciones: {e}")
 
-                resultados_clasificacion = df_extracto.apply(clasificar_con_maestra, axis=1)
-                df_extracto['TIPIFICACION_DETECTADA'] = [r[0] for r in resultados_clasificacion]
-                df_extracto['PDV_SAP'] = [r[1] for r in resultados_clasificacion]
-                df_extracto['CB_SAP'] = [r[2] for r in resultados_clasificacion]
-                
-                total_registros = len(df_extracto)
-                total_monto_general = df_extracto['VALOR_LIMPIO'].sum()
-                
-                df_cons = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'Consignaciones']
-                df_dtf = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'Datafonos']
-                df_qr = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'QR']
-                df_por_id = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'POR IDENTIFICAR']
-                
-                # --- DASHBOARD DE RESULTADOS (CANTIDAD Y VALORES) ---
-                st.markdown("#### 📊 Diagnóstico General (Partidas y Valores)")
-                
-                m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("📄 Total Extracto", f"{total_registros} part.", f"${total_monto_general:,.2f}")
-                m2.metric("🏦 Consignaciones", f"{len(df_cons)} part.", f"${df_cons['VALOR_LIMPIO'].sum():,.2f}")
-                m3.metric("💳 Datáfonos", f"{len(df_dtf)} part.", f"${df_dtf['VALOR_LIMPIO'].sum():,.2f}")
-                m4.metric("📱 QR", f"{len(df_qr)} part.", f"${df_qr['VALOR_LIMPIO'].sum():,.2f}")
-                m5.metric("❓ Por Identificar", f"{len(df_por_id)} part.", f"${df_por_id['VALOR_LIMPIO'].sum():,.2f}", delta_color="inverse")
-                
-                st.markdown("---")
-                
-                # --- NAVEGACIÓN EN PESTAÑAS DE DETALLE ---
-                t_cons, t_dtf, t_qr, t_pend = st.tabs([
-                    f"🏦 Consignaciones (${df_cons['VALOR_LIMPIO'].sum():,.2f})", 
-                    f"💳 Datáfonos (${df_dtf['VALOR_LIMPIO'].sum():,.2f})", 
-                    f"📱 QR (${df_qr['VALOR_LIMPIO'].sum():,.2f})", 
-                    f"❓ Por Identificar (${df_por_id['VALOR_LIMPIO'].sum():,.2f})"
-                ])
-                
-                with t_cons:
-                    st.markdown(f"##### Transacciones Identificadas como Consignaciones ({len(df_cons)} registros)")
-                    st.dataframe(df_cons, use_container_width=True)
+        # ==========================================
+        # PESTAÑA 2: DATÁFONOS (Archivo Independiente)
+        # ==========================================
+        with tab_dtf:
+            st.markdown(f"### 💳 Módulo de Datáfonos • {sociedad_seleccionada}")
+            st.markdown("Sube el **Archivo de Datáfonos / Pasarelas** independiente para generar su respectivo Plano Multiusos SAP.")
+            
+            uploaded_file_dtf = st.file_uploader("Sube el Archivo de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf")
+            
+            if uploaded_file_dtf:
+                try:
+                    if uploaded_file_dtf.name.lower().endswith(('.xlsx', '.xls')):
+                        df_dtf_raw = pd.read_excel(uploaded_file_dtf)
+                    else:
+                        df_dtf_raw = pd.read_csv(uploaded_file_dtf, encoding='latin1')
+                        
+                    df_dtf_raw.columns = [str(c).strip().upper() for c in df_dtf_raw.columns]
+                    cols_lower = [str(c).lower() for c in df_dtf_raw.columns]
+                    col_valor_name = next((df_dtf_raw.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
+                    
+                    df_dtf_raw['VALOR_LIMPIO'] = pd.to_numeric(df_dtf_raw[col_valor_name], errors='coerce').fillna(0) if col_valor_name else 0.0
+                    col_ref_ext = df_dtf_raw.columns[min(9, len(df_dtf_raw.columns) - 1)]
+                    
+                    def filtrar_dtf(row):
+                        ref_text = str(row.get(col_ref_ext, '')).strip().upper()
+                        if ref_text in mapa_multicash and mapa_multicash[ref_text]['tipificacion'] == 'Datafonos':
+                            return 'SI', mapa_multicash[ref_text]['pdv_sap'], mapa_multicash[ref_text]['cb_sap']
+                        return 'NO', '', ''
 
-                with t_dtf:
-                    st.markdown(f"##### Transacciones Identificadas como Datáfonos ({len(df_dtf)} registros)")
-                    st.dataframe(df_dtf, use_container_width=True)
+                    res = df_dtf_raw.apply(filtrar_dtf, axis=1)
+                    df_dtf_raw['ES_DTF'] = [r[0] for r in res]
+                    df_dtf_raw['PDV_SAP'] = [r[1] for r in res]
+                    df_dtf_raw['CB_SAP'] = [r[2] for r in res]
+                    
+                    df_dtf_filtrado = df_dtf_raw[df_dtf_raw['ES_DTF'] == 'SI']
+                    
+                    st.metric("Total Datáfonos Detectados", f"{len(df_dtf_filtrado)} registros", f"${df_dtf_filtrado['VALOR_LIMPIO'].sum():,.2f}")
+                    st.dataframe(df_dtf_filtrado, use_container_width=True)
+                    
+                    if len(df_dtf_filtrado) > 0:
+                        plano_d = generar_plano_multiusos(df_dtf_filtrado, "DTF", codigo_sociedad)
+                        out_d = io.BytesIO()
+                        with pd.ExcelWriter(out_d, engine='openpyxl') as w:
+                            plano_d.to_excel(w, sheet_name='Multiusos_Datafonos', index=False)
+                        out_d.seek(0)
+                        wb_d = openpyxl.load_workbook(out_d)
+                        wb_d_est = aplicar_estilos_excel_bytes(wb_d)
+                        final_d = io.BytesIO()
+                        wb_d_est.save(final_d)
+                        final_d.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
+                            data=final_d,
+                            file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_dtf_btn"
+                        )
+                except Exception as e:
+                    st.error(f"Error procesando datáfonos: {e}")
 
-                with t_qr:
-                    st.markdown(f"##### Transacciones Identificadas como Código QR ({len(df_qr)} registros)")
-                    st.dataframe(df_qr, use_container_width=True)
+        # ==========================================
+        # PESTAÑA 3: CÓDIGOS QR (Archivo Independiente)
+        # ==========================================
+        with tab_qr:
+            st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
+            st.markdown("Sube el **Archivo de Códigos QR** independiente para generar su respectivo Plano Multiusos SAP.")
+            
+            uploaded_file_qr = st.file_uploader("Sube el Archivo de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr")
+            
+            if uploaded_file_qr:
+                try:
+                    if uploaded_file_qr.name.lower().endswith(('.xlsx', '.xls')):
+                        df_qr_raw = pd.read_excel(uploaded_file_qr)
+                    else:
+                        df_qr_raw = pd.read_csv(uploaded_file_qr, encoding='latin1')
+                        
+                    df_qr_raw.columns = [str(c).strip().upper() for c in df_qr_raw.columns]
+                    cols_lower = [str(c).lower() for c in df_qr_raw.columns]
+                    col_valor_name = next((df_qr_raw.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
+                    
+                    df_qr_raw['VALOR_LIMPIO'] = pd.to_numeric(df_qr_raw[col_valor_name], errors='coerce').fillna(0) if col_valor_name else 0.0
+                    col_ref_ext = df_qr_raw.columns[min(9, len(df_qr_raw.columns) - 1)]
+                    
+                    def filtrar_qr(row):
+                        ref_text = str(row.get(col_ref_ext, '')).strip().upper()
+                        if ref_text in mapa_multicash and mapa_multicash[ref_text]['tipificacion'] == 'QR':
+                            return 'SI', mapa_multicash[ref_text]['pdv_sap'], mapa_multicash[ref_text]['cb_sap']
+                        return 'NO', '', ''
 
-                with t_pend:
-                    st.markdown(f"##### Transacciones Sin Match Directo / Cartera ({len(df_por_id)} registros)")
-                    st.dataframe(df_por_id, use_container_width=True)
-
-            except Exception as e:
-                st.error(f"Error procesando la base unificada: {e}")
+                    res = df_qr_raw.apply(filtrar_qr, axis=1)
+                    df_qr_raw['ES_QR'] = [r[0] for r in res]
+                    df_qr_raw['PDV_SAP'] = [r[1] for r in res]
+                    df_qr_raw['CB_SAP'] = [r[2] for r in res]
+                    
+                    df_qr_filtrado = df_qr_raw[df_qr_raw['ES_QR'] == 'SI']
+                    
+                    st.metric("Total QR Detectados", f"{len(df_qr_filtrado)} registros", f"${df_qr_filtrado['VALOR_LIMPIO'].sum():,.2f}")
+                    st.dataframe(df_qr_filtrado, use_container_width=True)
+                    
+                    if len(df_qr_filtrado) > 0:
+                        plano_q = generar_plano_multiusos(df_qr_filtrado, "QR", codigo_sociedad)
+                        out_q = io.BytesIO()
+                        with pd.ExcelWriter(out_q, engine='openpyxl') as w:
+                            plano_q.to_excel(w, sheet_name='Multiusos_QR', index=False)
+                        out_q.seek(0)
+                        wb_q = openpyxl.load_workbook(out_q)
+                        wb_q_est = aplicar_estilos_excel_bytes(wb_q)
+                        final_q = io.BytesIO()
+                        wb_q_est.save(final_q)
+                        final_q.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
+                            data=final_q,
+                            file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_qr_btn"
+                        )
+                except Exception as e:
+                    st.error(f"Error procesando códigos QR: {e}")
