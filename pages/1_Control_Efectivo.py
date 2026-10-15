@@ -423,7 +423,6 @@ else:
         for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
             comercio_val = str(row.get('CODIGO UNICO', idx)).strip()
             
-            # Usando FECHA DE CONSUMO en lugar de fecha de proceso
             fecha_doc = fecha_hoy
             val_fec = row.get('FECHA DE CONSUMO', None)
             if pd.notna(val_fec):
@@ -530,7 +529,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v18")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v19")
         
         if uploaded_multicash_gen:
             try:
@@ -631,15 +630,17 @@ else:
         # 2. PESTAÑAS INDEPENDIENTES Y PLANOS MULTIUSOS
         # ==========================================
         if maneja_qr:
-            tab_cons, tab_dtf, tab_qr = st.tabs([
+            tab_cons, tab_dtf, tab_qr, tab_pw = st.tabs([
                 "🏦 1. Consignaciones", 
                 "💳 2. Datáfonos", 
-                "📱 3. Códigos QR"
+                "📱 3. Códigos QR",
+                "🚀 4. Payments Way (Próximamente)"
             ])
         else:
-            tab_cons, tab_dtf = st.tabs([
+            tab_cons, tab_dtf, tab_pw = st.tabs([
                 "🏦 1. Consignaciones", 
-                "💳 2. Datáfonos"
+                "💳 2. Datáfonos",
+                "🚀 4. Payments Way (Próximamente)"
             ])
             tab_qr = None
 
@@ -776,7 +777,6 @@ else:
                 
                 if uploaded_qr:
                     try:
-                        # Leer archivo plano delimitado por pipe (|)
                         df_q_raw = pd.read_csv(uploaded_qr, encoding='latin1', sep='|')
                             
                         df_q_raw.columns = [str(c).strip().upper() for c in df_q_raw.columns]
@@ -832,3 +832,19 @@ else:
                         st.dataframe(df_q_raw, use_container_width=True)
                     except Exception as e:
                         st.error(f"Error procesando códigos QR: {e}")
+
+        # --- MÓDULO 4: PAYMENTS WAY (PRÓXIMAMENTE) ---
+        with tab_pw:
+            st.markdown(f"### 🚀 Módulo Payments Way • {sociedad_seleccionada}")
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #FFF5F7 0%, #FFE4E6 100%); border: 1px solid #FDA4AF; padding: 30px; border-radius: 16px; text-align: center; margin-top: 20px; box-shadow: 0 4px 12px rgba(194, 24, 91, 0.08);">
+                    <div style="font-size: 48px; margin-bottom: 10px;">🚀💳</div>
+                    <h2 style="color: #9F1239; margin-top: 0; font-weight: 800;">Módulo Payments Way - Próximamente</h2>
+                    <p style="font-size: 1.1rem; color: #4B5563; max-width: 700px; margin: 0 auto 20px auto;">
+                        Este módulo se encuentra en fase de diseño conceptual e integración próxima. Pronto podrás cargar los extractos y archivos planos de <b>Payments Way</b> para generar de manera automatizada su respectivo Plano Multiusos SAP, con homologación de comercios, control de comisiones, retenciones y validaciones contables.
+                    </p>
+                    <div style="display: inline-block; background-color: #C2185B; color: white; padding: 10px 24px; border-radius: 30px; font-weight: 700; font-size: 14px;">
+                        🚧 En Desarrollo • Lanzamiento Próximo
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
