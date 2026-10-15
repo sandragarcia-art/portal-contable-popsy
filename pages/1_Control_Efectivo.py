@@ -222,15 +222,21 @@ else:
         
         filas = []
         fecha_hoy = datetime.now().strftime('%d.%m.%Y')
-        cuenta_banco_default = '11100511'
-        cuenta_ingreso_default = '11050502'
+        cuenta_banco_default = 11100511
+        cuenta_ingreso_default = 11050502
         nit_corporativo = "8600538311"
         
         for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
-            # Obtener referencia exacta (columna de cruce)
             ref_val = str(row.get(col_ref_name, row.get('TEXTO MULTICAHS', row.iloc[0]))).strip()
             
-            # Obtener fecha del extracto si existe la columna, sino usar fecha de hoy
+            # Cuenta bancaria limpia como entero sin decimales
+            cb_val_raw = str(row.get('CB_SAP', '')).strip()
+            try:
+                cuenta_banco_val = int(float(cb_val_raw)) if cb_val_raw and cb_val_raw.lower() != 'nan' else cuenta_banco_default
+            except:
+                cuenta_banco_val = cuenta_banco_default
+
+            # Fecha del documento
             fecha_doc = fecha_hoy
             if col_fecha_name and col_fecha_name in row and pd.notna(row[col_fecha_name]):
                 val_fec = row[col_fecha_name]
@@ -239,7 +245,6 @@ else:
                 else:
                     fec_str = str(val_fec).strip()
                     try:
-                        # Intentar parsear si viene en formato timestamp o texto
                         parsed = pd.to_datetime(fec_str)
                         if pd.notna(parsed):
                             fecha_doc = parsed.strftime('%d.%m.%Y')
@@ -250,31 +255,34 @@ else:
             cebe_val = str(row.get('CB_SAP', ''))
             pdv_val = str(row.get('PDV_SAP', ''))
             
-            val_raw = row.get('VALOR_LIMPIO', row.get('VALOR', row.get('VALOR TR', 0)))
+            # Valor TR en positivo y convertido estrictamente a entero (sin .0)
+            val_raw = row.get('VALOR_LIMPIO', row.get('VALOR', 0))
             try:
-                valor_val = abs(float(val_raw))
+                valor_val = int(round(abs(float(val_raw))))
             except:
-                valor_val = 0.0
+                valor_val = 0
                 
             texto_pos = f"{fecha_doc} {tipo_prefijo} {pdv_val}"
             
+            # Posición 1: Banco (Clave 50)
             p1 = {c: None for c in columnas_multiusos}
             p1.update({
                 'ID': idx, 'FECHA DOC': fecha_doc, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
                 'FECHA CONT': fecha_doc, 'FECHA REG': fecha_doc, 'MONEDA TR': 'COP',
                 'REFERENCIA': ref_val, 'TEXTO CABECERA': f"{tipo_prefijo} {ref_val}",
                 'IDENTIFICADOR PI': idx, 'POSICION': 1, 'CLAVE CONTABILIZACION': 50,
-                'CUENTA DE MAYOR': int(cuenta_banco_default), 'VALOR TR': valor_val, 'CEBE': cebe_val,
+                'CUENTA DE MAYOR': cuenta_banco_val, 'VALOR TR': valor_val, 'CEBE': cebe_val,
                 'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_pos
             })
             
+            # Posición 2: Contrapartida / Ingreso (Clave 40)
             p2 = {c: None for c in columnas_multiusos}
             p2.update({
                 'ID': idx, 'FECHA DOC': fecha_doc, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
                 'FECHA CONT': fecha_doc, 'FECHA REG': fecha_doc, 'MONEDA TR': 'COP',
                 'REFERENCIA': ref_val, 'TEXTO CABECERA': f"{tipo_prefijo} {ref_val}",
                 'IDENTIFICADOR PI': idx, 'POSICION': 2, 'CLAVE CONTABILIZACION': 40,
-                'CUENTA DE MAYOR': int(cuenta_ingreso_default), 'VALOR TR': valor_val, 'CEBE': cebe_val,
+                'CUENTA DE MAYOR': cuenta_ingreso_default, 'VALOR TR': valor_val, 'CEBE': cebe_val,
                 'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_pos
             })
             
@@ -304,7 +312,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v4")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v7")
         
         if uploaded_multicash_gen:
             try:
@@ -406,7 +414,7 @@ else:
             st.markdown(f"### 🏦 Módulo de Consignaciones • {sociedad_seleccionada}")
             st.markdown("Sube el **Extracto Bancario / Multicash** para procesar las consignaciones y descargar el Plano Multiusos SAP.")
             
-            uploaded_cons = st.file_uploader("Sube el Extracto Bancario (Consignaciones)", type=["xlsx", "XLSX", "xls", "csv"], key="up_cons_tab_v4")
+            uploaded_cons = st.file_uploader("Sube el Extracto Bancario (Consignaciones)", type=["xlsx", "XLSX", "xls", "csv"], key="up_cons_tab_v7")
             
             if uploaded_cons:
                 try:
@@ -449,7 +457,7 @@ else:
                         data=csv_c,
                         file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv",
-                        key="btn_dl_cons_csv_v2",
+                        key="btn_dl_cons_csv_v5",
                         use_container_width=True
                     )
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -462,7 +470,7 @@ else:
             st.markdown(f"### 💳 Módulo de Datáfonos • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Datáfonos / Pasarelas** independiente para procesarlo y descargar su Plano Multiusos SAP.")
             
-            uploaded_dtf = st.file_uploader("Sube el Archivo de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_tab_v4")
+            uploaded_dtf = st.file_uploader("Sube el Archivo de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_tab_v7")
             
             if uploaded_dtf:
                 try:
@@ -505,7 +513,7 @@ else:
                         data=csv_d,
                         file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv",
-                        key="btn_dl_dtf_csv_v2",
+                        key="btn_dl_dtf_csv_v5",
                         use_container_width=True
                     )
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -518,7 +526,7 @@ else:
             st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Códigos QR** independiente para procesarlo y descargar su Plano Multiusos SAP.")
             
-            uploaded_qr = st.file_uploader("Sube el Archivo de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_tab_v4")
+            uploaded_qr = st.file_uploader("Sube el Archivo de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_tab_v7")
             
             if uploaded_qr:
                 try:
@@ -561,7 +569,7 @@ else:
                         data=csv_q,
                         file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv",
-                        key="btn_dl_qr_csv_v2",
+                        key="btn_dl_qr_csv_v5",
                         use_container_width=True
                     )
                     st.markdown("<br>", unsafe_allow_html=True)
