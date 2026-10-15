@@ -9,7 +9,7 @@ from openpyxl.utils import get_column_letter
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Control Efectivo POPSY",
+    page_title="Control Bancario y Efectivo POPSY",
     page_icon="🍦",
     layout="wide"
 )
@@ -111,17 +111,6 @@ st.markdown("""
         margin: 0;
         font-style: italic;
     }
-    .stButton>button {
-        background-color: #C2185B !important;
-        color: white !important;
-        border-radius: 10px !important;
-        font-weight: 700 !important;
-        border: none !important;
-        padding: 0.6rem 1.2rem !important;
-    }
-    .stButton>button:hover {
-        background-color: #8E0038 !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -139,7 +128,7 @@ else:
     # --- TOP BAR SUPERIOR ---
     st.markdown(f"""
         <div class="top-bar">
-            <div class="brand-logo">CONTROL EFECTIVO POPSY</div>
+            <div class="brand-logo">PORTAL CONTABLE POPSY</div>
             <div class="user-pill">
                 <div class="avatar">{nombre_corto[0]}</div>
                 <div class="user-info">
@@ -154,8 +143,8 @@ else:
     fecha_actual = datetime.now().strftime('%A, %d de %B de %Y').capitalize()
     st.markdown(f"""
         <div class="hero-banner">
-            <div class="badge-tag">🍦 CONTROL EFECTIVO POPSY • {fecha_actual}</div>
-            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Bienvenido al Portal de Control Efectivo</h1>
+            <div class="badge-tag">🍦 CONTROL BANCARIO & EFECTIVO • {fecha_actual}</div>
+            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico y Conciliación Multicash</h1>
             <p class="hero-sub">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
         </div>
     """, unsafe_allow_html=True)
@@ -188,330 +177,98 @@ else:
     else:
         codigo_sociedad = None
 
-    # --- SELECCIÓN DE MÓDULO ---
-    st.markdown("### 📂 Módulos del Sistema")
-    modulo_seleccionado = st.radio(
-        "Selecciona el tipo de informe a procesar:",
-        ["🏦 1. Consignaciones Bancarias", "💳 2. Datáfonos & Pasarelas", "📱 3. Pagos Código QR"],
-        horizontal=True
-    )
+    # --- CARGA DEL EXTRACTO Y CLASIFICACIÓN CON BASE UNIFICADA ---
+    st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario • {sociedad_seleccionada}")
+    
+    if codigo_sociedad and os.path.exists(nombre_archivo_base):
+        uploaded_multicash = st.file_uploader(f"Sube el Extracto Bancario para Diagnóstico y Procesamiento ({sociedad_seleccionada})", type=["xlsx", "csv"], key="diag_multicash_v2")
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    def aplicar_estilos_excel_bytes(wb):
-        NAVY_HEADER = "003366"
-        WHITE_TEXT = "FFFFFF"
-        ZEBRA_FILL = "F2F5F9"
-        BORDER_COLOR = "D9D9D9"
-        ACCENT_BLUE = "D9E1F2"
-        
-        thin_border = Border(
-            left=Side(style='thin', color=BORDER_COLOR), right=Side(style='thin', color=BORDER_COLOR),
-            top=Side(style='thin', color=BORDER_COLOR), bottom=Side(style='thin', color=BORDER_COLOR)
-        )
-        
-        for sheetname in wb.sheetnames:
-            ws = wb[sheetname]
-            ws.views.sheetView[0].showGridLines = True
-            
-            if sheetname == 'Resumen_Diario':
-                ws.column_dimensions['A'].width = 32
-                ws.column_dimensions['B'].width = 25
-                ws.merge_cells('A1:B1')
-                title_cell = ws['A1']
-                title_cell.value = "INFORME EJECUTIVO DE CONTROL EFECTIVO DIARIO"
-                title_cell.font = Font(name='Segoe UI', size=13, bold=True, color=WHITE_TEXT)
-                title_cell.fill = PatternFill(start_color=NAVY_HEADER, end_color=NAVY_HEADER, fill_type="solid")
-                title_cell.alignment = Alignment(horizontal='center', vertical='center')
-                ws.row_dimensions[1].height = 35
+        if uploaded_multicash:
+            try:
+                # Cargar pestañas de la base unificada
+                df_base_tiendas = pd.read_excel(nombre_archivo_base, sheet_name='Hoja1')
+                df_cuentas_bancos = pd.read_excel(nombre_archivo_base, sheet_name='Cuentas_Bancos')
                 
-                for row in range(3, ws.max_row + 1):
-                    cell_a, cell_b = ws[f'A{row}'], ws[f'B{row}']
-                    cell_a.font = Font(name='Segoe UI', size=11, bold=(row == ws.max_row))
-                    cell_b.font = Font(name='Segoe UI', size=11, bold=(row == ws.max_row))
-                    cell_a.border, cell_b.border = thin_border, thin_border
-                    cell_b.alignment = Alignment(horizontal='right')
-                    if row % 2 == 0:
-                        cell_a.fill = cell_b.fill = PatternFill(start_color=ZEBRA_FILL, end_color=ZEBRA_FILL, fill_type="solid")
-                    if row == ws.max_row:
-                        cell_a.fill = cell_b.fill = PatternFill(start_color=ACCENT_BLUE, end_color=ACCENT_BLUE, fill_type="solid")
-            else:
-                ws.row_dimensions[1].height = 26
-                for col in range(1, ws.max_column + 1):
-                    cell = ws.cell(row=1, column=col)
-                    cell.font = Font(name='Segoe UI', size=10, bold=True, color=WHITE_TEXT)
-                    cell.fill = PatternFill(start_color=NAVY_HEADER, end_color=NAVY_HEADER, fill_type="solid")
-                    cell.alignment = Alignment(horizontal='center', vertical='center')
-                    cell.border = thin_border
+                df_extracto = pd.read_excel(uploaded_multicash) if uploaded_multicash.name.endswith('.xlsx') else pd.read_csv(uploaded_multicash)
+                
+                # Normalizar nombres de columnas
+                df_base_tiendas.columns = [str(c).strip().upper() for c in df_base_tiendas.columns]
+                df_cuentas_bancos.columns = [str(c).strip().upper() for c in df_cuentas_bancos.columns]
+                df_extracto.columns = [str(c).strip().upper() for c in df_extracto.columns]
+                
+                # Mapa de búsqueda por TEXTO MULTICASH
+                df_base_tiendas['TEXTO_CLEAN'] = df_base_tiendas['TEXTO MULTICAHS'].astype(str).str.strip().str.upper()
+                mapa_multicash = {}
+                for _, r in df_base_tiendas.iterrows():
+                    mapa_multicash[r['TEXTO_CLEAN']] = {
+                        'cb_sap': r.get('CB SAP', ''),
+                        'pdv_sap': r.get('PDV SAP', ''),
+                        'tipificacion': r.get('TIPIFICACION', '')
+                    }
                     
-                for row in range(2, ws.max_row + 1):
-                    ws.row_dimensions[row].height = 20
-                    for col in range(1, ws.max_column + 1):
-                        cell = ws.cell(row=row, column=col)
-                        cell.font = Font(name='Segoe UI', size=10)
-                        cell.border = thin_border
-                        if row % 2 == 0:
-                            cell.fill = PatternFill(start_color=ZEBRA_FILL, end_color=ZEBRA_FILL, fill_type="solid")
-                            
-                for col in ws.columns:
-                    max_len = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = get_column_letter(col[0].column)
-                    ws.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 40)
-        return wb
-
-    def registrar_historial(usuario, sociedad, total_extracto, total_consolidados, total_pendientes):
-        archivo_historial = "historial_depuracion.xlsx"
-        nuevo_registro = {
-            "Fecha y Hora": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            "Usuario": usuario,
-            "Sociedad": sociedad,
-            "Partidas Extracto": total_extracto,
-            "Consolidadas": total_consolidados,
-            "Pendientes Banco": total_pendientes
-        }
-        
-        if os.path.exists(archivo_historial):
-            try:
-                df_hist = pd.read_excel(archivo_historial)
-                df_hist = pd.concat([df_hist, pd.DataFrame([nuevo_registro])], ignore_index=True)
-            except:
-                df_hist = pd.DataFrame([nuevo_registro])
-        else:
-            df_hist = pd.DataFrame([nuevo_registro])
-            
-        df_hist.to_excel(archivo_historial, index=False)
-
-    def generar_multiusos(df_conciliados, columna_clave_extracto, df_base, columna_clave_base, codigo_sociedad):
-        columnas_multiusos = [
-            'ID', 'USUARIO', 'LEDGER', 'FECHA DOC', 'CLASE DOCUMENTO', 'SOCIEDAD', 'FECHA CONT',
-            'FECHA REG', 'MONEDA TR', 'TASA DE CAMBIO', 'REFERENCIA', 'TEXTO CABECERA',
-            'IDENTIFICADOR PI', 'POSICION', 'CLAVE CONTABILIZACION', 'CUENTA DE MAYOR',
-            'CLASE DE CUENTA', 'PROVEEDOR', 'CLIENTE', 'PAGADOR ALTERNATIVO', 'INDICADOR CME',
-            'VALOR TR', 'IND IVA', 'CALCULAR IMP. AUTOMATICO', 'FECHA BASE', 'CONDICION PAGO',
-            'FECHA VALOR', 'Orden de Compra', 'Posicion OC', 'ORDEN', 'CECO', 'CEBE', 'GRAFO',
-            'OPERACION GRAFO', 'ELEMENTO PEP', 'ASIGNACION', 'CLAVE DE REF_1', 'CLAVE DE REF_2',
-            'CLAVE DE REF_3', 'TEXTO POSICION', 'INDICADOR TP. RETENCIONES 1', 'INDICADOR RETENCION  1',
-            'BASE RETENCION 1', 'BASE RETENCION DOC 1', 'INDICADOR TP. RETENCIONES 2', 'INDICADOR RETENCION  2',
-            'BASE RETENCION 2', 'BASE RETENCION DOC 2', 'INDICADOR TP. RETENCIONES 3', 'INDICADOR RETENCION  3',
-            'BASE RETENCION 3', 'BASE RETENCION DOC 3', 'INDICADOR TP. RETENCIONES 4', 'INDICADOR RETENCION  4',
-            'BASE RETENCION 4', 'BASE RETENCION DOC4', 'INDICADOR TP. RETENCIONES 5', 'INDICADOR RETENCION  5',
-            'BASE RETENCION 5', 'BASE RETENCION DOC 5', 'AÑO', 'MES', 'MONEDA', 'OBJETO COSTO',
-            'CLASE DE ACTIVIDAD', 'POSICION DE LA ORDEN', 'HOJA DE RUTA', 'SEGMENTO', 'PRODUCTO',
-            'OF VENTAS', 'CLIENTE CAR', 'CLASE MEDIO DE TRANSPORTE', 'ZONA', 'MEDIO DE TRANSPORTE',
-            'GRUPO MATERIAL 1', 'GRUPO MATERIAL 2', 'GRUPO MATERIAL 3', 'GRUPO MATERIAL 4',
-            'VALOR LC', 'FECHA RFERENCIA PAGO', 'DOCUMENTO REFERENCIA', 'FECHA REFERENCIA', 'BLOQUEO PAGO'
-        ]
-        
-        # Mapeo de datos base (referencias, centro de beneficio, PDV SAP)
-        df_base.columns = [str(c).strip().upper() for c in df_base.columns]
-        col_cb_sap = next((c for c in df_base.columns if 'CB SAP' in c or 'CEBE' in c), None)
-        col_pdv_sap = next((c for c in df_base.columns if 'PDV SAP' in c or 'NOMBRE' in c), None)
-        
-        mapa_maestro = {}
-        for _, r in df_base.iterrows():
-            k = str(r.get(columna_clave_base, '')).strip().upper().lstrip('0')
-            if k:
-                mapa_maestro[k] = {
-                    'cb_sap': str(r.get(col_cb_sap, '')) if col_cb_sap else '',
-                    'pdv_sap': str(r.get(col_pdv_sap, '')) if col_pdv_sap else ''
-                }
-
-        filas = []
-        fecha_hoy = datetime.now().strftime('%d.%m.%Y')
-        
-        cols_lower = [str(c).lower() for c in df_conciliados.columns]
-        col_valor_name = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c), df_conciliados.columns[min(5, len(df_conciliados.columns)-1)])
-        col_fecha_ext = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'fecha' in c), None)
-        
-        # Columna E del extracto (índice 4, ya que A=0, B=1, C=2, D=3, E=4)
-        col_cuenta_mayor_extracto = df_conciliados.columns[4] if len(df_conciliados.columns) > 4 else df_conciliados.columns[min(1, len(df_conciliados.columns)-1)]
-
-        cuenta_caja_default = '11050502'
-        nit_corporativo = "8600538311"
-
-        for idx, (_, row) in enumerate(df_conciliados.iterrows(), start=1):
-            ref_raw = str(row.get(columna_clave_extracto, '')).strip()
-            ref_clean = ref_raw.upper().lstrip('0')
-            
-            valor_raw = row.get(col_valor_name, 0)
-            try:
-                valor_val = abs(float(valor_raw))
-            except:
-                valor_val = 0
-            
-            fecha_doc_val = fecha_hoy
-            if col_fecha_ext:
-                f_val = row.get(col_fecha_ext)
-                if pd.notnull(f_val):
-                    if isinstance(f_val, datetime):
-                        fecha_doc_val = f_val.strftime('%d.%m.%Y')
-                    else:
-                        f_str = str(f_val).strip()
-                        if len(f_str) >= 10:
-                            try:
-                                fecha_doc_val = pd.to_datetime(f_str).strftime('%d.%m.%Y')
-                            except:
-                                pass
-                                
-            cebe_val = ""
-            pdv_val = f"REF {ref_raw}"
-            if ref_clean in mapa_maestro:
-                cebe_val = mapa_maestro[ref_clean]['cb_sap']
-                pdv_val = mapa_maestro[ref_clean]['pdv_sap'] or f"REF {ref_raw}"
+                # Detectar columna de texto en el extracto (normalmente Columna J o similar)
+                col_ref_ext = df_extracto.columns[min(9, len(df_extracto.columns) - 1)]
                 
-            texto_posicion = f"{fecha_doc_val} CG {pdv_val}"
-            
-            # Tomar la cuenta de mayor directamente de la Columna E del extracto y limpiar formato
-            cta_mayor_raw = str(row.get(col_cuenta_mayor_extracto, '11100511')).strip()
-            cuenta_sap_asignada = cta_mayor_raw.split('.')[0] if cta_mayor_raw and cta_mayor_raw != 'nan' else '11100511'
+                def clasificar_con_maestra(row):
+                    ref_text = str(row.get(col_ref_ext, '')).strip().upper()
+                    
+                    # 1. Búsqueda exacta o parcial en Hoja1
+                    if ref_text in mapa_multicash:
+                        info = mapa_multicash[ref_text]
+                        return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    
+                    # Búsqueda por contención
+                    for k, info in mapa_multicash.items():
+                        if k and k in ref_text:
+                            return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                            
+                    return 'POR IDENTIFICAR', '', ''
 
-            p1 = {c: None for c in columnas_multiusos}
-            p1.update({
-                'ID': idx, 'FECHA DOC': fecha_doc_val, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
-                'FECHA CONT': fecha_doc_val, 'FECHA REG': fecha_doc_val, 'MONEDA TR': 'COP',
-                'REFERENCIA': ref_raw, 'TEXTO CABECERA': f"CG REF {ref_raw}",
-                'IDENTIFICADOR PI': idx, 'POSICION': 1, 'CLAVE CONTABILIZACION': 50,
-                'CUENTA DE MAYOR': int(cuenta_caja_default), 'VALOR TR': valor_val, 'CEBE': cebe_val,
-                'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_posicion
-            })
-            
-            p2 = {c: None for c in columnas_multiusos}
-            p2.update({
-                'ID': idx, 'FECHA DOC': fecha_doc_val, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
-                'FECHA CONT': fecha_doc_val, 'FECHA REG': fecha_doc_val, 'MONEDA TR': 'COP',
-                'REFERENCIA': ref_raw, 'TEXTO CABECERA': f"CG REF {ref_raw}",
-                'IDENTIFICADOR PI': idx, 'POSICION': 2, 'CLAVE CONTABILIZACION': 40,
-                'CUENTA DE MAYOR': int(cuenta_sap_asignada) if str(cuenta_sap_asignada).isdigit() else cuenta_sap_asignada, 
-                'VALOR TR': valor_val, 'CEBE': cebe_val,
-                'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_posicion
-            })
-            
-            filas.append(p1)
-            filas.append(p2)
-            
-        return pd.DataFrame(filas)[columnas_multiusos]
-
-    # --- MÓDULO 1: CONSIGNACIONES BANCARIAS ---
-    if "Consignaciones" in modulo_seleccionado:
-        st.markdown(f"#### 🏦 Módulo de Consignaciones Bancarias • {sociedad_seleccionada}")
-        
-        if codigo_sociedad is None:
-            st.warning(f"🚧 La sociedad **{sociedad_seleccionada}** se encuentra en proceso de implementación.")
-        else:
-            if not os.path.exists(nombre_archivo_base):
-                st.error(f"⚠️ No se encontró el archivo maestro '{nombre_archivo_base}' en la raíz del repositorio.")
-            else:
-                st.success(f"📁 Archivo maestro cargado automáticamente: **{nombre_archivo_base}** (Sociedad: {codigo_sociedad})")
+                resultados_clasificacion = df_extracto.apply(clasificar_con_maestra, axis=1)
+                df_extracto['TIPIFICACION_DETECTADA'] = [r[0] for r in resultados_clasificacion]
+                df_extracto['PDV_SAP'] = [r[1] for r in resultados_clasificacion]
+                df_extracto['CB_SAP'] = [r[2] for r in resultados_clasificacion]
                 
-                uploaded_extracto = st.file_uploader(f"Sube el Extracto Bancario para {sociedad_seleccionada}", type=["xlsx"], key=f"m1_ext_{codigo_sociedad}")
+                total_registros = len(df_extracto)
+                df_cons = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'Consignaciones']
+                df_dtf = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'Datafonos']
+                df_qr = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'QR']
+                df_por_id = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'POR IDENTIFICAR']
+                
+                # --- DASHBOARD DE RESULTADOS DE TIPOS DE OPERACIÓN ---
+                st.markdown("#### 📊 Diagnóstico y Clasificación Unificada")
+                m1, m2, m3, m4, m5 = st.columns(5)
+                m1.metric("📄 Total Extracto", f"{total_registros} partidas")
+                m2.metric("🏦 Consignaciones", f"{len(df_cons)} partidas", f"{(len(df_cons)/total_registros)*100:.1f}%")
+                m3.metric("💳 Datáfonos", f"{len(df_dtf)} partidas", f"{(len(df_dtf)/total_registros)*100:.1f}%")
+                m4.metric("📱 QR", f"{len(df_qr)} partidas", f"{(len(df_qr)/total_registros)*100:.1f}%")
+                m5.metric("❓ Por Identificar", f"{len(df_por_id)} partidas", delta_color="inverse")
+                
+                st.markdown("---")
+                
+                # --- NAVEGACIÓN EN PESTAÑAS DE DETALLE ---
+                t_cons, t_dtf, t_qr, t_pend = st.tabs([
+                    "🏦 Consignaciones", 
+                    "💳 Datáfonos", 
+                    "📱 QR", 
+                    "❓ Por Identificar / Cartera"
+                ])
+                
+                with t_cons:
+                    st.markdown(f"##### Transacciones Identificadas como Consignaciones ({len(df_cons)})")
+                    st.dataframe(df_cons, use_container_width=True)
 
-                if uploaded_extracto:
-                    try:
-                        df_base = pd.read_excel(nombre_archivo_base, sheet_name=0)
-                        df_extracto = pd.read_excel(uploaded_extracto)
-                        
-                        total_partidas_extracto = len(df_extracto)
-                        
-                        columna_clave_base = df_base.columns[0]
-                        columna_clave_extracto = df_extracto.columns[min(9, len(df_extracto.columns) - 1)]
-                        
-                        df_base['ref_clean'] = df_base[columna_clave_base].astype(str).str.strip().str.upper().str.lstrip('0')
-                        df_extracto['ref_clean'] = df_extracto[columna_clave_extracto].astype(str).str.strip().str.upper().str.lstrip('0')
-                        
-                        df_cruce = pd.merge(
-                            df_base, df_extracto,
-                            on='ref_clean',
-                            how='outer', indicator=True, suffixes=('_base', '_extracto')
-                        )
-                        
-                        pendientes_banco = df_cruce[df_cruce['_merge'] == 'right_only'].copy()
-                        por_contabilizar = df_cruce[df_cruce['_merge'] == 'left_only'].copy()
-                        conciliados = df_cruce[df_cruce['_merge'] == 'both'].copy()
-                        
-                        for df in [pendientes_banco, por_contabilizar, conciliados]:
-                            if '_merge' in df.columns:
-                                df.drop(columns=['_merge'], inplace=True)
-                            if 'ref_clean' in df.columns:
-                                df.drop(columns=['ref_clean'], inplace=True)
-                        
-                        registrar_historial(
-                            usuario=st.session_state.get('usuario_nombre', st.session_state.correo_usuario),
-                            sociedad=codigo_sociedad,
-                            total_extracto=total_partidas_extracto,
-                            total_consolidados=len(conciliados),
-                            total_pendientes=len(pendientes_banco)
-                        )
-                        
-                        plano_multiusos = generar_multiusos(conciliados, columna_clave_extracto, df_base, columna_clave_base, codigo_sociedad)
-                        total_abiertas = len(pendientes_banco) + len(por_contabilizar)
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        
-                        # --- MÉTRICAS VISUALES ---
-                        c1, c2, c3, c4, c5 = st.columns(5)
-                        c1.metric("📄 Partidas Extracto", total_partidas_extracto)
-                        c2.metric("✅ Consolidadas", len(conciliados))
-                        c3.metric("⏳ Pendientes Banco", len(pendientes_banco))
-                        c4.metric("📥 Por Contabilizar", len(por_contabilizar))
-                        c5.metric("📊 Total Abiertas", total_abiertas)
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        
-                        # --- TABLAS EN PESTAÑAS ---
-                        t1, t2, t3, t4 = st.tabs(["✅ Consolidados", "⏳ Pendientes Banco", "📥 Por Contabilizar", "📋 Plano Multiusos SAP"])
-                        
-                        with t1:
-                            st.dataframe(conciliados, use_container_width=True)
-                        with t2:
-                            st.markdown(f"##### Registros en el Extracto sin cruce en la Base ({len(pendientes_banco)} registros)")
-                            st.dataframe(pendientes_banco, use_container_width=True)
-                        with t3:
-                            st.markdown(f"##### Registros en la Base sin cruce en el Extracto ({len(por_contabilizar)} registros)")
-                            st.dataframe(por_contabilizar, use_container_width=True)
-                        with t4:
-                            st.markdown(f"##### Plano Multiusos SAP generado para la sociedad {codigo_sociedad}")
-                            st.dataframe(plano_multiusos, use_container_width=True)
-                            
-                        # --- EXPORTAR EXCEL ---
-                        output = io.BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            pd.DataFrame({
-                                "Métrica Contable": ["Sociedad", "Fecha y Hora Proceso", "Total Partidas Extracto", "Transacciones Consolidadas", "Pendientes en Banco", "Por Contabilizar", "Total Partidas Abiertas"],
-                                "Cantidad / Valor": [codigo_sociedad, datetime.now().strftime('%Y-%m-%d %H:%M'), total_partidas_extracto, len(conciliados), len(pendientes_banco), len(por_contabilizar), total_abiertas]
-                            }).to_excel(writer, sheet_name='Resumen_Diario', index=False, startrow=1)
-                            
-                            conciliados.to_excel(writer, sheet_name='Consolidados', index=False)
-                            pendientes_banco.to_excel(writer, sheet_name='Pendientes_Banco', index=False)
-                            por_contabilizar.to_excel(writer, sheet_name='Por_Contabilizar', index=False)
-                            plano_multiusos.to_excel(writer, sheet_name='Plano_Multiusos', index=False)
-                            
-                        output.seek(0)
-                        wb = openpyxl.load_workbook(output)
-                        wb_estilizado = aplicar_estilos_excel_bytes(wb)
-                        
-                        final_output = io.BytesIO()
-                        wb_estilizado.save(final_output)
-                        final_output.seek(0)
-                        
-                        st.markdown("---")
-                        st.download_button(
-                            label=f"📥 Descargar Informe {codigo_sociedad} y Plano SAP Estilizado (.xlsx)",
-                            data=final_output,
-                            file_name=f"Informe_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                        
-                    except Exception as e:
-                        st.error(f"Error procesando archivos para {codigo_sociedad}: {e}")
-                else:
-                    st.info(f"💡 Sube tu extracto bancario diario para **{sociedad_seleccionada}** para procesar el control efectivo y generar el plano SAP.")
+                with t_dtf:
+                    st.markdown(f"##### Transacciones Identificadas como Datáfonos ({len(df_dtf)})")
+                    st.dataframe(df_dtf, use_container_width=True)
 
-    # --- MÓDULO 2: DATÁFONOS Y PASARELAS ---
-    elif "Datáfonos" in modulo_seleccionado:
-        st.markdown("#### 💳 Módulo de Datáfonos & Pasarelas de Pago")
-        st.info("🚧 Módulo preparado para cargar reportes de Redeban, Credibancolombia, Bold o TuCompra.")
+                with t_qr:
+                    st.markdown(f"##### Transacciones Identificadas como Código QR ({len(df_qr)})")
+                    st.dataframe(df_qr, use_container_width=True)
 
-    # --- MÓDULO 3: CÓDIGO QR ---
-    else:
-        st.markdown("#### 📱 Módulo de Pagos Código QR")
-        st.info("🚧 Módulo preparado para procesar transferencias QR de Bancolombia, Daviplata y Nequi.")
+                with t_pend:
+                    st.markdown(f"##### Transacciones Sin Match Directo / Cartera ({len(df_por_id)})")
+                    st.dataframe(df_por_id, use_container_width=True)
+
+            except Exception as e:
+                st.error(f"Error procesando la base unificada: {e}")
