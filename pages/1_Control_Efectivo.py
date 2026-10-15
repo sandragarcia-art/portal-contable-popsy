@@ -423,9 +423,9 @@ else:
         for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
             comercio_val = str(row.get('CODIGO UNICO', idx)).strip()
             
-            # Fecha de proceso (YYYYMMDD) convertida a DD.MM.YYYY
+            # Usando FECHA DE CONSUMO en lugar de fecha de proceso
             fecha_doc = fecha_hoy
-            val_fec = row.get('FECHA DE PROCESO', None)
+            val_fec = row.get('FECHA DE CONSUMO', None)
             if pd.notna(val_fec):
                 try:
                     fec_str = str(int(val_fec)) if isinstance(val_fec, (int, float)) else str(val_fec).strip()
@@ -530,7 +530,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v17")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v18")
         
         if uploaded_multicash_gen:
             try:
@@ -814,7 +814,7 @@ else:
                         st.metric("Total Transacciones QR", f"{len(df_q_raw)} registros", f"${df_q_raw['VALOR_LIMPIO'].sum():,.2f}")
                         st.markdown("<br>", unsafe_allow_html=True)
                         
-                        with st.spinner("Generando el Plano Multiusos SAP de Códigos QR con matriz contable... Por favor espera ⏳"):
+                        with st.spinner("Generando el Plano Multiusos SAP de Códigos QR con matriz contable (Fecha de Consumo)... Por favor espera ⏳"):
                             plano_q = generar_plano_multiusos_qr(df_q_raw, df_matriz_dtf, codigo_sociedad)
                             csv_q = plano_q.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
                         
