@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import os
+import altair as alt
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -620,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v33")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v34")
         
         if uploaded_multicash_gen:
             try:
@@ -714,23 +715,26 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- GRÁFICOS DEL DASHBOARD: DISTRIBUCIÓN Y TOP 10 PUNTOS DE VENTA ---
+                # --- DASHBOARD VISUALIZACIÓN GRÁFICA PROFESIONAL ---
                 col_chart1, col_chart2 = st.columns(2)
                 
+                # Paleta de colores corporativa Popsy
+                popsy_colors = ['#C2185B', '#E91E63', '#F48FB1', '#6B7280', '#9CA3AF']
+
                 with col_chart1:
                     st.markdown("#### 🥧 Distribución de Partidas por Tipificación")
                     df_pie = df_ext_gen.groupby('TIPO').agg(
                         Cantidad=('VALOR_LIMPIO', 'count'),
                         Monto=('VALOR_LIMPIO', 'sum')
                     ).reset_index()
-                    st.altair_chart(
-                        __import__('altair').Chart(df_pie).mark_arc(innerRadius=50).encode(
-                            theta=__import__('altair').Theta(field="Cantidad", type="quantitative"),
-                            color=__import__('altair').Color(field="TIPO", type="nominal", legend=__import__('altair').Legend(title="Tipificación")),
-                            tooltip=['TIPO', 'Cantidad', __import__('altair').Tooltip('Monto', format="$,.2f")]
-                        ).properties(height=300),
-                        use_container_width=True
-                    )
+                    
+                    chart_pie = alt.Chart(df_pie).mark_arc(innerRadius=65, outerRadius=105, stroke='#FFFFFF', strokeWidth=2).encode(
+                        theta=alt.Theta(field="Cantidad", type="quantitative"),
+                        color=alt.Color(field="TIPO", type="nominal", scale=alt.Scale(range=popsy_colors), legend=alt.Legend(title="Tipificación", orient="bottom")),
+                        tooltip=['TIPO', 'Cantidad', alt.Tooltip('Monto', format="$,.2f", title="Monto Total (COP)")]
+                    ).properties(height=320).configure_view(strokeWidth=0)
+                    
+                    st.altair_chart(chart_pie, use_container_width=True)
 
                 with col_chart2:
                     st.markdown("#### 🏆 Top 10 Puntos de Venta (Mayor Recaudo)")
@@ -739,14 +743,13 @@ else:
                     ).reset_index().nlargest(10, 'Recaudo')
                     
                     if len(df_top) > 0:
-                        st.altair_chart(
-                            __import__('altair').Chart(df_top).mark_bar(color='#C2185B').encode(
-                                x=__import__('altair').X('Recaudo:Q', title="Recaudo (COP)"),
-                                y=__import__('altair').Y('PDV_SAP:N', sort='-x', title="Punto de Venta"),
-                                tooltip=['PDV_SAP', __import__('altair').Tooltip('Recaudo', format="$,.2f")]
-                            ).properties(height=300),
-                            use_container_width=True
-                        )
+                        chart_bar = alt.Chart(df_top).mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6, color='#C2185B').encode(
+                            x=alt.X('Recaudo:Q', title="Recaudo Total (COP)", axis=alt.Axis(format="$,d")),
+                            y=alt.Y('PDV_SAP:N', sort='-x', title="Punto de Venta", axis=alt.Axis(labelLimit=200)),
+                            tooltip=['PDV_SAP', alt.Tooltip('Recaudo', format="$,.2f", title="Recaudo")]
+                        ).properties(height=320).configure_view(strokeWidth=0)
+                        
+                        st.altair_chart(chart_bar, use_container_width=True)
                     else:
                         st.info("No hay suficientes datos de PDV SAP identificados para mostrar el Top 10.")
 
