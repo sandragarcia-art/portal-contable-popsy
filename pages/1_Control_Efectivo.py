@@ -455,8 +455,10 @@ else:
                     
                     df_cons_filtrado = df_extracto[df_extracto['ES_CONS'] == 'SI']
                     
-                    st.metric("Total Consignaciones Detectadas", f"{len(df_cons_filtrado)} registros", f"${df_cons_filtrado['VALOR_LIMPIO'].sum():,.2f}")
-                    st.dataframe(df_cons_filtrado, use_container_width=True)
+                    st.markdown("---")
+                    col_m1, col_btn1 = st.columns([1.5, 2])
+                    with col_m1:
+                        st.metric("Consignaciones Detectadas", f"{len(df_cons_filtrado)} registros", f"${df_cons_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     
                     if len(df_cons_filtrado) > 0:
                         plano_c = generar_plano_multiusos(df_cons_filtrado, "CG", codigo_sociedad)
@@ -470,13 +472,19 @@ else:
                         wb_c_est.save(final_c)
                         final_c.seek(0)
                         
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
-                            data=final_c,
-                            file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="dl_cons_btn"
-                        )
+                        with col_btn1:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            st.download_button(
+                                label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
+                                data=final_c,
+                                file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="dl_cons_btn",
+                                use_container_width=True
+                            )
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.dataframe(df_cons_filtrado, use_container_width=True)
                 except Exception as e:
                     st.error(f"Error procesando consignaciones: {e}")
 
@@ -514,8 +522,10 @@ else:
                     
                     df_dtf_filtrado = df_dtf_raw[df_dtf_raw['ES_DTF'] == 'SI']
                     
-                    st.metric("Total Datáfonos Detectados", f"{len(df_dtf_filtrado)} registros", f"${df_dtf_filtrado['VALOR_LIMPIO'].sum():,.2f}")
-                    st.dataframe(df_dtf_filtrado, use_container_width=True)
+                    st.markdown("---")
+                    col_m2, col_btn2 = st.columns([1.5, 2])
+                    with col_m2:
+                        st.metric("Datáfonos Detectados", f"{len(df_dtf_filtrado)} registros", f"${df_dtf_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     
                     if len(df_dtf_filtrado) > 0:
                         plano_d = generar_plano_multiusos(df_dtf_filtrado, "DTF", codigo_sociedad)
@@ -529,13 +539,19 @@ else:
                         wb_d_est.save(final_d)
                         final_d.seek(0)
                         
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
-                            data=final_d,
-                            file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="dl_dtf_btn"
-                        )
+                        with col_btn2:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            st.download_button(
+                                label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
+                                data=final_d,
+                                file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="dl_dtf_btn",
+                                use_container_width=True
+                            )
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.dataframe(df_dtf_filtrado, use_container_width=True)
                 except Exception as e:
                     st.error(f"Error procesando datáfonos: {e}")
 
@@ -573,8 +589,10 @@ else:
                     
                     df_qr_filtrado = df_qr_raw[df_qr_raw['ES_QR'] == 'SI']
                     
-                    st.metric("Total QR Detectados", f"{len(df_qr_filtrado)} registros", f"${df_qr_filtrado['VALOR_LIMPIO'].sum():,.2f}")
-                    st.dataframe(df_qr_filtrado, use_container_width=True)
+                    st.markdown("---")
+                    col_m3, col_btn3 = st.columns([1.5, 2])
+                    with col_m3:
+                        st.metric("Códigos QR Detectados", f"{len(df_qr_filtrado)} registros", f"${df_qr_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     
                     if len(df_qr_filtrado) > 0:
                         plano_q = generar_plano_multiusos(df_qr_filtrado, "QR", codigo_sociedad)
@@ -588,12 +606,18 @@ else:
                         wb_q_est.save(final_q)
                         final_q.seek(0)
                         
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
-                            data=final_q,
-                            file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="dl_qr_btn"
-                        )
+                        with col_btn3:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            st.download_button(
+                                label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
+                                data=final_q,
+                                file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="dl_qr_btn",
+                                use_container_width=True
+                            )
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.dataframe(df_qr_filtrado, use_container_width=True)
                 except Exception as e:
                     st.error(f"Error procesando códigos QR: {e}")
