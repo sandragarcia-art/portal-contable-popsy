@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
 from datetime import datetime
 import os
 
@@ -124,7 +125,7 @@ st.markdown("""
         margin-bottom: 4px;
     }
     .metric-val {
-        font-size: 16px;
+        fONT-size: 16px;
         font-weight: 800;
         color: #1F2937;
     }
@@ -137,14 +138,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- VALIDACIÓN DE SESIÓN ---
+# --- VALIDACIÓN DE SESIÓN Y REDIRECCIÓN AUTOMÁTICA ---
 if "autenticado" not in st.session_state or not st.session_state.autenticado:
-    st.markdown("""
-        <div style="background-color: #FFF3CD; padding: 25px; border-radius: 12px; border-left: 6px solid #FFEEBA; text-align: center; margin-top: 50px;">
-            <h3 style="color: #856404; margin-top: 0;">⚠️ Acceso Restringido</h3>
-            <p style="font-size: 1.1rem; color: #533F03;">Por favor, regresa a la página principal (<b>app.py</b>) e inicia sesión con tu correo corporativo para acceder a este módulo.</p>
-        </div>
-    """, unsafe_allow_html=True)
+    st.warning("⚠️ No se detectó una sesión activa. Redirigiendo al inicio de sesión...")
+    st.switch_page("app.py")
 else:
     nombre_corto = st.session_state.get('usuario_nombre', st.session_state.correo_usuario.split('@')[0].replace('.', ' ').title())
 
@@ -624,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v22")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v23")
         
         if uploaded_multicash_gen:
             try:
@@ -718,21 +715,54 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DASHBOARD VISUAL CON STREAMLIT CHARTS (NATIVO, SIN BUGS) ---
+                # --- DASHBOARD VISUAL: GRÁFICO DE TORTA (DONUT) Y BARRAS HORIZONTALES ---
                 col_chart1, col_chart2 = st.columns(2)
                 
                 with col_chart1:
-                    st.markdown("##### 📊 Distribución de Recaudo por Canal")
-                    resumen_tipos = df_ext_gen.groupby('TIPO')['VALOR_LIMPIO'].sum().reset_index()
-                    resumen_tipos.columns = ['Canal', 'Monto Total ($)']
-                    st.bar_chart(resumen_tipos.set_index('Canal'))
+                    st.markdown("##### 🍩 Distribución de Recaudo por Canal")
+                    df_pie = df_ext_gen.groupby('TIPO')['VALOR_LIMPIO'].sum().abs().reset_index()
+                    df_pie.columns = ['Canal', 'Monto']
+                    
+                    fig_pie = px.pie(
+                        df_pie,
+                        names='Canal',
+                        values='Monto',
+                        hole=0.5,
+                        color_discrete_sequence=['#C2185B', '#111827', '#10B981', '#F59E0B', '#EF4444']
+                    )
+                    fig_pie.update_traces(textposition='inside', textinfo='percent+label', textfont_size=11)
+                    fig_pie.update_layout(
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        height=320,
+                        showlegend=False
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
 
                 with col_chart2:
-                    st.markdown("##### 🏆 Top 10 Puntos de Venta con Mayor Recaudo")
-                    df_pdv_sum = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP')['VALOR_LIMPIO'].sum().nlargest(10).reset_index()
-                    df_pdv_sum.columns = ['PDV SAP', 'Monto ($)']
+                    st.markdown("##### 🏆 Top 10 Puntos de Venta (Mayor Recaudo)")
+                    df_pdv_sum = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP')['VALOR_LIMPIO'].sum().abs().nlargest(10).reset_index()
+                    df_pdv_sum.columns = ['PDV SAP', 'Monto']
+                    
                     if not df_pdv_sum.empty:
-                        st.bar_chart(df_pdv_sum.set_index('PDV SAP'))
+                        fig_bar = px.bar(
+                            df_pdv_sum,
+                            x='Monto',
+                            y='PDV SAP',
+                            orientation='h',
+                            text_auto='$,.0f',
+                            color='Monto',
+                            color_continuous_scale=['#F472B6', '#C2185B', '#831843']
+                        )
+                        fig_bar.update_layout(
+                            yaxis={'categoryorder':'total ascending'},
+                            margin=dict(t=10, b=10, l=10, r=10),
+                            height=320,
+                            xaxis_title="",
+                            yaxis_title="",
+                            coloraxis_showscale=False
+                        )
+                        fig_bar.update_traces(textfont_size=10, textposition="outside", cliponaxis=False)
+                        st.plotly_chart(fig_bar, use_container_width=True)
                     else:
                         st.info("No hay datos de PDV homologados para graficar.")
 
