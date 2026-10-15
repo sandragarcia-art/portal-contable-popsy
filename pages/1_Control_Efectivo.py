@@ -111,6 +111,32 @@ st.markdown("""
         margin: 0;
         font-style: italic;
     }
+    .metric-card {
+        background: white;
+        border: 1px solid #E5E7EB;
+        padding: 16px;
+        border-radius: 12px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        text-align: center;
+    }
+    .metric-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #6B7280;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .metric-val {
+        font-size: 16px;
+        font-weight: 800;
+        color: #1F2937;
+    }
+    .metric-sub {
+        font-size: 14px;
+        font-weight: 700;
+        color: #C2185B;
+        margin-top: 2px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -144,7 +170,7 @@ else:
     st.markdown(f"""
         <div class="hero-banner">
             <div class="badge-tag">🍦 CONTROL EFECTIVO & PLANOS MULTIUSOS • {fecha_actual}</div>
-            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Gestión Independiente por Módulo</h1>
+            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico y Planos Multiusos SAP</h1>
             <p class="hero-sub">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
         </div>
     """, unsafe_allow_html=True)
@@ -299,7 +325,100 @@ else:
             }
 
         # ==========================================
-        # PESTAÑAS PRINCIPALES POR MODALIDAD
+        # CARGA ÚNICA DEL EXTRACTO GENERAL (PARA EL RESUMEN)
+        # ==========================================
+        st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para el Resumen y Diagnóstico", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_multicash")
+        
+        if uploaded_multicash_gen:
+            try:
+                if uploaded_multicash_gen.name.lower().endswith(('.xlsx', '.xls')):
+                    df_ext_gen = pd.read_excel(uploaded_multicash_gen)
+                else:
+                    df_ext_gen = pd.read_csv(uploaded_multicash_gen, encoding='latin1')
+                    
+                df_ext_gen.columns = [str(c).strip().upper() for c in df_ext_gen.columns]
+                cols_lower = [str(c).lower() for c in df_ext_gen.columns]
+                col_val_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
+                
+                df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0) if col_val_gen else 0.0
+                col_ref_gen = df_ext_gen.columns[min(9, len(df_ext_gen.columns) - 1)]
+                
+                def clasificar_gen(row):
+                    ref_text = str(row.get(col_ref_gen, '')).strip().upper()
+                    if ref_text in mapa_multicash:
+                        info = mapa_multicash[ref_text]
+                        return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    for k, info in mapa_multicash.items():
+                        if k and k in ref_text:
+                            return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    return 'POR IDENTIFICAR', '', ''
+
+                res_gen = df_ext_gen.apply(clasificar_gen, axis=1)
+                df_ext_gen['TIPO'] = [r[0] for r in res_gen]
+                df_ext_gen['PDV_SAP'] = [r[1] for r in res_gen]
+                df_ext_gen['CB_SAP'] = [r[2] for r in res_gen]
+                
+                tot_reg = len(df_ext_gen)
+                tot_monto = df_ext_gen['VALOR_LIMPIO'].sum()
+                
+                df_c_gen = df_ext_gen[df_ext_gen['TIPO'] == 'Consignaciones']
+                df_d_gen = df_ext_gen[df_ext_gen['TIPO'] == 'Datafonos']
+                df_q_gen = df_ext_gen[df_ext_gen['TIPO'] == 'QR']
+                df_p_gen = df_ext_gen[df_ext_gen['TIPO'] == 'POR IDENTIFICAR']
+                
+                # --- RESUMEN EJECUTIVO GLOBAL ---
+                st.markdown("#### 📊 Diagnóstico General del Extracto")
+                c1, c2, c3, c4, c5 = st.columns(5)
+                
+                with c1:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Total Extracto</div>
+                            <div class="metric-val">{tot_reg} part.</div>
+                            <div class="metric-sub">${tot_monto:,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Consignaciones</div>
+                            <div class="metric-val">{len(df_c_gen)} part.</div>
+                            <div class="metric-sub">${df_c_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Datáfonos</div>
+                            <div class="metric-val">{len(df_d_gen)} part.</div>
+                            <div class="metric-sub">${df_d_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c4:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">QR</div>
+                            <div class="metric-val">{len(df_q_gen)} part.</div>
+                            <div class="metric-sub">${df_q_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with c5:
+                    st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-title">Por Identificar</div>
+                            <div class="metric-val">{len(df_p_gen)} part.</div>
+                            <div class="metric-sub" style="color: #DC2626;">${df_p_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+            except Exception as e:
+                st.error(f"Error procesando resumen general: {e}")
+
+        st.markdown("<br><hr><br>", unsafe_allow_html=True)
+
+        # ==========================================
+        # PESTAÑAS INDEPENDIENTES Y PLANOS MULTIUSOS
         # ==========================================
         tab_cons, tab_dtf, tab_qr = st.tabs([
             "🏦 1. Consignaciones", 
@@ -312,7 +431,7 @@ else:
             st.markdown(f"### 🏦 Módulo de Consignaciones • {sociedad_seleccionada}")
             st.markdown("Sube el **Extracto Bancario / Multicash** para procesar las consignaciones y descargar el Plano Multiusos SAP.")
             
-            uploaded_cons = st.file_uploader("Sube el Extracto Bancario (Consignaciones)", type=["xlsx", "XLSX", "xls", "csv"], key="up_cons_ind")
+            uploaded_cons = st.file_uploader("Sube el Extracto Bancario (Consignaciones)", type=["xlsx", "XLSX", "xls", "csv"], key="up_cons_ind_v2")
             
             if uploaded_cons:
                 try:
@@ -343,27 +462,26 @@ else:
                     
                     st.metric("Total Consignaciones Detectadas", f"{len(df_c_filtrado)} registros", f"${df_c_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     
-                    if len(df_c_filtrado) > 0:
-                        plano_c = generar_plano_multiusos(df_c_filtrado, "CG", codigo_sociedad)
-                        out_c = io.BytesIO()
-                        with pd.ExcelWriter(out_c, engine='openpyxl') as w:
-                            plano_c.to_excel(w, sheet_name='Multiusos_Consignaciones', index=False)
-                        out_c.seek(0)
-                        wb_c = openpyxl.load_workbook(out_c)
-                        wb_c_est = aplicar_estilos_excel_bytes(wb_c)
-                        final_c = io.BytesIO()
-                        wb_c_est.save(final_c)
-                        final_c.seek(0)
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
-                            data=final_c,
-                            file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="btn_dl_cons_fixed",
-                            use_container_width=True
-                        )
+                    plano_c = generar_plano_multiusos(df_c_filtrado, "CG", codigo_sociedad)
+                    out_c = io.BytesIO()
+                    with pd.ExcelWriter(out_c, engine='openpyxl') as w:
+                        plano_c.to_excel(w, sheet_name='Multiusos_Consignaciones', index=False)
+                    out_c.seek(0)
+                    wb_c = openpyxl.load_workbook(out_c)
+                    wb_c_est = aplicar_estilos_excel_bytes(wb_c)
+                    final_c = io.BytesIO()
+                    wb_c_est.save(final_c)
+                    final_c.seek(0)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.download_button(
+                        label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
+                        data=final_c,
+                        file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="btn_dl_cons_v2",
+                        use_container_width=True
+                    )
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.dataframe(df_c_filtrado, use_container_width=True)
                 except Exception as e:
@@ -374,7 +492,7 @@ else:
             st.markdown(f"### 💳 Módulo de Datáfonos • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Datáfonos / Pasarelas** independiente para procesarlo y descargar su Plano Multiusos SAP.")
             
-            uploaded_dtf = st.file_uploader("Sube el Archivo de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_ind")
+            uploaded_dtf = st.file_uploader("Sube el Archivo de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_ind_v2")
             
             if uploaded_dtf:
                 try:
@@ -405,27 +523,26 @@ else:
                     
                     st.metric("Total Datáfonos Detectados", f"{len(df_d_filtrado)} registros", f"${df_d_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     
-                    if len(df_d_filtrado) > 0:
-                        plano_d = generar_plano_multiusos(df_d_filtrado, "DTF", codigo_sociedad)
-                        out_d = io.BytesIO()
-                        with pd.ExcelWriter(out_d, engine='openpyxl') as w:
-                            plano_d.to_excel(w, sheet_name='Multiusos_Datafonos', index=False)
-                        out_d.seek(0)
-                        wb_d = openpyxl.load_workbook(out_d)
-                        wb_d_est = aplicar_estilos_excel_bytes(wb_d)
-                        final_d = io.BytesIO()
-                        wb_d_est.save(final_d)
-                        final_d.seek(0)
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
-                            data=final_d,
-                            file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="btn_dl_dtf_fixed",
-                            use_container_width=True
-                        )
+                    plano_d = generar_plano_multiusos(df_d_filtrado, "DTF", codigo_sociedad)
+                    out_d = io.BytesIO()
+                    with pd.ExcelWriter(out_d, engine='openpyxl') as w:
+                        plano_d.to_excel(w, sheet_name='Multiusos_Datafonos', index=False)
+                    out_d.seek(0)
+                    wb_d = openpyxl.load_workbook(out_d)
+                    wb_d_est = aplicar_estilos_excel_bytes(wb_d)
+                    final_d = io.BytesIO()
+                    wb_d_est.save(final_d)
+                    final_d.seek(0)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.download_button(
+                        label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
+                        data=final_d,
+                        file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="btn_dl_dtf_v2",
+                        use_container_width=True
+                    )
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.dataframe(df_d_filtrado, use_container_width=True)
                 except Exception as e:
@@ -436,7 +553,7 @@ else:
             st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Códigos QR** independiente para procesarlo y descargar su Plano Multiusos SAP.")
             
-            uploaded_qr = st.file_uploader("Sube el Archivo de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_ind")
+            uploaded_qr = st.file_uploader("Sube el Archivo de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_ind_v2")
             
             if uploaded_qr:
                 try:
@@ -467,27 +584,26 @@ else:
                     
                     st.metric("Total QR Detectados", f"{len(df_q_filtrado)} registros", f"${df_q_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     
-                    if len(df_q_filtrado) > 0:
-                        plano_q = generar_plano_multiusos(df_q_filtrado, "QR", codigo_sociedad)
-                        out_q = io.BytesIO()
-                        with pd.ExcelWriter(out_q, engine='openpyxl') as w:
-                            plano_q.to_excel(w, sheet_name='Multiusos_QR', index=False)
-                        out_q.seek(0)
-                        wb_q = openpyxl.load_workbook(out_q)
-                        wb_q_est = aplicar_estilos_excel_bytes(wb_q)
-                        final_q = io.BytesIO()
-                        wb_q_est.save(final_q)
-                        final_q.seek(0)
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
-                            data=final_q,
-                            file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="btn_dl_qr_fixed",
-                            use_container_width=True
-                        )
+                    plano_q = generar_plano_multiusos(df_q_filtrado, "QR", codigo_sociedad)
+                    out_q = io.BytesIO()
+                    with pd.ExcelWriter(out_q, engine='openpyxl') as w:
+                        plano_q.to_excel(w, sheet_name='Multiusos_QR', index=False)
+                    out_q.seek(0)
+                    wb_q = openpyxl.load_workbook(out_q)
+                    wb_q_est = aplicar_estilos_excel_bytes(wb_q)
+                    final_q = io.BytesIO()
+                    wb_q_est.save(final_q)
+                    final_q.seek(0)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.download_button(
+                        label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
+                        data=final_q,
+                        file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="btn_dl_qr_v2",
+                        use_container_width=True
+                    )
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.dataframe(df_q_filtrado, use_container_width=True)
                 except Exception as e:
