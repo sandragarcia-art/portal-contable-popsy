@@ -323,8 +323,8 @@ else:
         col_valor_name = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c), df_conciliados.columns[min(5, len(df_conciliados.columns)-1)])
         col_fecha_ext = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'fecha' in c), None)
         
-        # Columna B del extracto (índice 1) para la Cuenta de Mayor
-        col_cuenta_mayor_extracto = df_conciliados.columns[1] if len(df_conciliados.columns) > 1 else df_conciliados.columns[0]
+        # Columna E del extracto (índice 4, ya que A=0, B=1, C=2, D=3, E=4)
+        col_cuenta_mayor_extracto = df_conciliados.columns[4] if len(df_conciliados.columns) > 4 else df_conciliados.columns[min(1, len(df_conciliados.columns)-1)]
 
         cuenta_caja_default = '11050502'
         nit_corporativo = "8600538311"
@@ -361,9 +361,9 @@ else:
                 
             texto_posicion = f"{fecha_doc_val} CG {pdv_val}"
             
-            # Tomar la cuenta de mayor directamente de la Columna B del extracto y limpiar formato
+            # Tomar la cuenta de mayor directamente de la Columna E del extracto y limpiar formato
             cta_mayor_raw = str(row.get(col_cuenta_mayor_extracto, '11100511')).strip()
-            cuenta_sap_asignada = cta_mayor_raw.split('.')[0] if cta_mayor_raw else '11100511'
+            cuenta_sap_asignada = cta_mayor_raw.split('.')[0] if cta_mayor_raw and cta_mayor_raw != 'nan' else '11100511'
 
             p1 = {c: None for c in columnas_multiusos}
             p1.update({
@@ -381,7 +381,7 @@ else:
                 'FECHA CONT': fecha_doc_val, 'FECHA REG': fecha_doc_val, 'MONEDA TR': 'COP',
                 'REFERENCIA': ref_raw, 'TEXTO CABECERA': f"CG REF {ref_raw}",
                 'IDENTIFICADOR PI': idx, 'POSICION': 2, 'CLAVE CONTABILIZACION': 40,
-                'CUENTA DE MAYOR': int(cuenta_sap_asignada) if cuenta_sap_asignada.isdigit() else cuenta_sap_asignada, 
+                'CUENTA DE MAYOR': int(cuenta_sap_asignada) if str(cuenta_sap_asignada).isdigit() else cuenta_sap_asignada, 
                 'VALOR TR': valor_val, 'CEBE': cebe_val,
                 'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_posicion
             })
