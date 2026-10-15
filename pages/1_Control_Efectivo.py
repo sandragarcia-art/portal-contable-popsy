@@ -263,6 +263,9 @@ else:
             except:
                 valor_val = 0
                 
+            if valor_val <= 0:
+                continue
+                
             texto_pos = f"{fecha_doc} CG {pdv_val}"
             
             p1 = {c: None for c in columnas_multiusos}
@@ -344,7 +347,8 @@ else:
             
             filas_matriz = df_matriz_dtf[df_matriz_dtf['TRN'] == trn_val]
             
-            for pos_i, (_, m_row) in enumerate(filas_matriz.iterrows(), start=1):
+            pos_efectiva = 1
+            for _, m_row in filas_matriz.iterrows():
                 tipo_cta = str(m_row['TIPO CUENTA']).strip()
                 cuenta_sap = int(m_row['CUENTA SAP'])
                 cc_sap = int(m_row['CC SAP'])
@@ -356,6 +360,10 @@ else:
                 except:
                     valor_val = 0
                 
+                # Omitir líneas cuyo valor sea 0
+                if valor_val == 0:
+                    continue
+                
                 texto_pos = f"{fecha_doc} DTF {pdv_val}"
                 
                 p = {c: None for c in columnas_multiusos}
@@ -363,11 +371,12 @@ else:
                     'ID': idx, 'FECHA DOC': fecha_doc, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
                     'FECHA CONT': fecha_doc, 'FECHA REG': fecha_doc, 'MONEDA TR': 'COP',
                     'REFERENCIA': comercio_val, 'TEXTO CABECERA': f"DTF {comercio_val}",
-                    'IDENTIFICADOR PI': idx, 'POSICION': pos_i, 'CLAVE CONTABILIZACION': cc_sap,
+                    'IDENTIFICADOR PI': idx, 'POSICION': pos_efectiva, 'CLAVE CONTABILIZACION': cc_sap,
                     'CUENTA DE MAYOR': cuenta_sap, 'VALOR TR': valor_val, 'CEBE': cebe_val,
                     'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_pos
                 })
                 filas.append(p)
+                pos_efectiva += 1
             
         return pd.DataFrame(filas)[columnas_multiusos]
 
@@ -420,7 +429,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v12")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v13")
         
         if uploaded_multicash_gen:
             try:
@@ -574,7 +583,7 @@ else:
         # --- MÓDULO 2: DATÁFONOS ---
         with tab_dtf:
             st.markdown(f"### 💳 Módulo de Datáfonos • {sociedad_seleccionada}")
-            st.markdown("Sube el **Archivo Plano de Datáfonos** para procesarlo y generar automáticamente el Plano Multiusos SAP con sus múltiples líneas.")
+            st.markdown("Sube el **Archivo Plano de Datáfonos** para procesarlo y generar automáticamente el Plano Multiusos SAP (omitiendo valores en 0).")
             
             uploaded_dtf = st.file_uploader("Sube el Archivo Plano de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_final")
             
@@ -606,7 +615,6 @@ else:
                     df_d_raw['PDV_SAP'] = [r[0] for r in res_d]
                     df_d_raw['CB'] = [r[1] for r in res_d]
                     
-                    # Validación y alerta inteligente de comercios no homologados
                     df_no_homologados = df_d_raw[df_d_raw['PDV_SAP'] == '']
                     if len(df_no_homologados) > 0:
                         comercios_unicos = df_no_homologados[['COMERCIO', 'TERMINAL']].drop_duplicates()
@@ -622,11 +630,11 @@ else:
                     st.metric("Total Transacciones Datáfonos", f"{len(df_d_raw)} registros", f"${df_d_raw['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    with st.spinner("Generando el Plano Multiusos SAP de Datáfonos... Por favor espera un momento ⏳"):
+                    with st.spinner("Generando el Plano Multiusos SAP de Datáfonos (excluyendo valores en 0)... Por favor espera ⏳"):
                         plano_d = generar_plano_multiusos_datafonos(df_d_raw, df_matriz_dtf, codigo_sociedad)
                         csv_d = plano_d.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
                     
-                    st.success(f"¡Plano generado con éxito! Total de posiciones contables creadas: {len(plano_d):,}")
+                    st.success(f"¡Plano generado con éxito! Total de posiciones contables válidas creadas: {len(plano_d):,}")
                     
                     st.download_button(
                         label="📥 Descargar Plano Multiusos SAP - Datáfonos (.csv)",
