@@ -591,8 +591,7 @@ else:
             mapa_multicash[r['TEXTO_CLEAN']] = {
                 'cb_sap': r.get('CB SAP', ''),
                 'pdv_sap': r.get('PDV SAP', ''),
-                'tipificacion': r.get('TIPIFICACION', ''),
-                'banco': str(r.get('BANCO', r.get('ENTIDAD', 'BANCO PRINCIPAL'))).strip()
+                'tipificacion': r.get('TIPIFICACION', '')
             }
 
         # Cargar matriz de datáfonos específica de la sociedad
@@ -621,7 +620,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v29")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v31")
         
         if uploaded_multicash_gen:
             try:
@@ -641,17 +640,16 @@ else:
                     ref_text = str(row.get(col_ref_gen, '')).strip().upper()
                     if ref_text in mapa_multicash:
                         info = mapa_multicash[ref_text]
-                        return info['tipificacion'], info['pdv_sap'], info['cb_sap'], info['banco']
+                        return info['tipificacion'], info['pdv_sap'], info['cb_sap']
                     for k, info in mapa_multicash.items():
                         if k and k in ref_text:
-                            return info['tipificacion'], info['pdv_sap'], info['cb_sap'], info['banco']
-                    return 'POR IDENTIFICAR', '', '', 'OTRO BANCO / NO IDENTIFICADO'
+                            return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    return 'POR IDENTIFICAR', '', ''
 
                 res_gen = df_ext_gen.apply(clasificar_gen, axis=1)
                 df_ext_gen['TIPO'] = [r[0] for r in res_gen]
                 df_ext_gen['PDV_SAP'] = [r[1] for r in res_gen]
                 df_ext_gen['CB_SAP'] = [r[2] for r in res_gen]
-                df_ext_gen['BANCO'] = [r[3] for r in res_gen]
                 
                 tot_reg = len(df_ext_gen)
                 tot_monto = df_ext_gen['VALOR_LIMPIO'].sum()
@@ -716,36 +714,9 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DESGLOSE Y FILTRO POR BANCO ---
-                st.markdown("#### 🏦 Desglose de Recaudo por Entidad Bancaria")
-                df_bancos_sum = df_ext_gen.groupby('BANCO').agg(
-                    Partidas=('VALOR_LIMPIO', 'count'),
-                    Monto_Total=('VALOR_LIMPIO', 'sum')
-                ).reset_index()
-                
-                cols_bancos = st.columns(min(len(df_bancos_sum), 4) if len(df_bancos_sum) > 0 else 1)
-                for idx, (_, row) in enumerate(df_bancos_sum.iterrows()):
-                    with cols_bancos[idx % len(cols_bancos)]:
-                        st.markdown(f"""
-                            <div class="metric-card">
-                                <div class="metric-title">{row['BANCO']}</div>
-                                <div class="metric-val">{row['Partidas']} partidas</div>
-                                <div class="metric-sub">${row['Monto_Total']:,.2f}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
-
-                st.markdown("<br>", unsafe_allow_html=True)
-
-                # FILTRO POR BANCO PARA EL EXTRACTO GENERAL
-                bancos_disponibles = ["TODOS LOS BANCOS"] + list(df_ext_gen['BANCO'].unique())
-                banco_seleccionado_filtro = st.selectbox("🔍 Filtrar visualización del extracto general por Banco:", bancos_disponibles)
-                
-                if banco_seleccionado_filtro != "TODOS LOS BANCOS":
-                    df_ext_view = df_ext_gen[df_ext_gen['BANCO'] == banco_seleccionado_filtro]
-                else:
-                    df_ext_view = df_ext_gen
-
-                st.dataframe(df_ext_view, use_container_width=True)
+                # VISUALIZACIÓN DIRECTA DEL EXTRACTO GENERAL COMPLETO
+                st.markdown("#### 📋 Detalle del Extracto General")
+                st.dataframe(df_ext_gen, use_container_width=True)
 
                 # --- GESTIÓN DE EXCEPCIONES: POR IDENTIFICAR CON BARRA DE BÚSQUEDA ---
                 if len(df_p_gen) > 0:
@@ -773,7 +744,7 @@ else:
                     )
                     
             except Exception as e:
-                st.error(f"Error procesando resumen general y bancos: {e}")
+                st.error(f"Error procesando resumen general: {e}")
 
         st.markdown("<br><hr><br>", unsafe_allow_html=True)
 
@@ -821,33 +792,24 @@ else:
                         ref_text = str(row.get(col_ref, '')).strip().upper()
                         if ref_text in mapa_multicash and mapa_multicash[ref_text]['tipificacion'] == 'Consignaciones':
                             info = mapa_multicash[ref_text]
-                            return 'SI', info['pdv_sap'], info['cb_sap'], info['banco']
-                        return 'NO', '', '', ''
+                            return 'SI', info['pdv_sap'], info['cb_sap']
+                        return 'NO', '', ''
 
                     res = df_c_raw.apply(filtrar_c, axis=1)
                     df_c_raw['ES_C'] = [r[0] for r in res]
                     df_c_raw['PDV_SAP'] = [r[1] for r in res]
                     df_c_raw['CB_SAP'] = [r[2] for r in res]
-                    df_c_raw['BANCO'] = [r[3] for r in res]
                     
                     df_c_filtrado = df_c_raw[df_c_raw['ES_C'] == 'SI']
                     
                     st.metric("Total Consignaciones Detectadas", f"{len(df_c_filtrado)} registros", f"${df_c_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # FILTRO POR BANCO Y BÚSQUEDA
-                    col_f1, col_f2 = st.columns(2)
-                    with col_f1:
-                        bancos_c = ["TODOS"] + list(df_c_filtrado['BANCO'].unique())
-                        banco_sel_c = st.selectbox("Filtrar Consignaciones por Banco:", bancos_c, key="b_c_sel")
-                    with col_f2:
-                        filtro_pdv_c = st.text_input("🔍 Filtrar por Tienda / Referencia:", "", key="f_c")
-
-                    df_c_view = df_c_filtrado
-                    if banco_sel_c != "TODOS":
-                        df_c_view = df_c_view[df_c_view['BANCO'] == banco_sel_c]
+                    filtro_pdv_c = st.text_input("🔍 Filtrar por Tienda / Referencia:", "", key="f_c")
                     if filtro_pdv_c:
-                        df_c_view = df_c_view[df_c_view['PDV_SAP'].astype(str).str.contains(filtro_pdv_c, case=False) | df_c_view[col_ref].astype(str).str.contains(filtro_pdv_c, case=False)]
+                        df_c_view = df_c_filtrado[df_c_filtrado['PDV_SAP'].astype(str).str.contains(filtro_pdv_c, case=False) | df_c_filtrado[col_ref].astype(str).str.contains(filtro_pdv_c, case=False)]
+                    else:
+                        df_c_view = df_c_filtrado
 
                     plano_c = generar_plano_multiusos_consignaciones(df_c_view, codigo_sociedad)
                     
@@ -929,7 +891,6 @@ else:
                     st.metric("Total Transacciones Datáfonos", f"{len(df_d_raw)} registros", f"${df_d_raw['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # FILTRO INTERACTIVO
                     filtro_pdv_d = st.text_input("🔍 Filtrar por PDV / Tienda o Comercio:", "", key="f_d")
                     if filtro_pdv_d:
                         df_d_view = df_d_raw[df_d_raw['PDV_SAP'].astype(str).str.contains(filtro_pdv_d, case=False) | df_d_raw['COMERCIO'].astype(str).str.contains(filtro_pdv_d, case=False)]
@@ -1014,7 +975,6 @@ else:
                         st.metric("Total Transacciones QR", f"{len(df_q_raw)} registros", f"${df_q_raw['VALOR_LIMPIO'].sum():,.2f}")
                         st.markdown("<br>", unsafe_allow_html=True)
                         
-                        # FILTRO INTERACTIVO
                         filtro_pdv_q = st.text_input("🔍 Filtrar por PDV / Tienda o Código Único:", "", key="f_q")
                         if filtro_pdv_q:
                             df_q_view = df_q_raw[df_q_raw['PDV_SAP'].astype(str).str.contains(filtro_pdv_q, case=False) | df_q_raw['CODIGO UNICO'].astype(str).str.contains(filtro_pdv_q, case=False)]
@@ -1097,7 +1057,6 @@ else:
                     st.metric("Total Transacciones Payments Way", f"{len(df_pw_raw)} registros", f"${df_pw_raw['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # FILTRO INTERACTIVO
                     filtro_pdv_pw = st.text_input("🔍 Filtrar por PDV / Tienda o Comercio:", "", key="f_pw")
                     if filtro_pdv_pw:
                         df_pw_view = df_pw_raw[df_pw_raw['PDV_SAP'].astype(str).str.contains(filtro_pdv_pw, case=False)]
