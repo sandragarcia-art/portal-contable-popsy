@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 from datetime import datetime
 import os
 
@@ -125,7 +124,7 @@ st.markdown("""
         margin-bottom: 4px;
     }
     .metric-val {
-        fONT-size: 16px;
+        font-size: 16px;
         font-weight: 800;
         color: #1F2937;
     }
@@ -163,8 +162,8 @@ else:
     fecha_actual = datetime.now().strftime('%A, %d de %B de %Y').capitalize()
     st.markdown(f"""
         <div class="hero-banner">
-            <div class="badge-tag">🍦 CONTROL EFECTIVO & PLANOS MULTIUSOS • {fecha_actual}</div>
-            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico y Planos Multiusos SAP</h1>
+            <div class="badge-tag">🍦 CONTROL EFECTIVO, BANCOS & PLANOS • {fecha_actual}</div>
+            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico por Banco y Planos Multiusos SAP</h1>
             <p class="hero-sub">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
         </div>
     """, unsafe_allow_html=True)
@@ -592,7 +591,8 @@ else:
             mapa_multicash[r['TEXTO_CLEAN']] = {
                 'cb_sap': r.get('CB SAP', ''),
                 'pdv_sap': r.get('PDV SAP', ''),
-                'tipificacion': r.get('TIPIFICACION', '')
+                'tipificacion': r.get('TIPIFICACION', ''),
+                'banco': str(r.get('BANCO', r.get('ENTIDAD', 'BANCO PRINCIPAL'))).strip()
             }
 
         # Cargar matriz de datáfonos específica de la sociedad
@@ -621,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v23")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v26")
         
         if uploaded_multicash_gen:
             try:
@@ -641,16 +641,17 @@ else:
                     ref_text = str(row.get(col_ref_gen, '')).strip().upper()
                     if ref_text in mapa_multicash:
                         info = mapa_multicash[ref_text]
-                        return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                        return info['tipificacion'], info['pdv_sap'], info['cb_sap'], info['banco']
                     for k, info in mapa_multicash.items():
                         if k and k in ref_text:
-                            return info['tipificacion'], info['pdv_sap'], info['cb_sap']
-                    return 'POR IDENTIFICAR', '', ''
+                            return info['tipificacion'], info['pdv_sap'], info['cb_sap'], info['banco']
+                    return 'POR IDENTIFICAR', '', '', 'OTRO BANCO / NO IDENTIFICADO'
 
                 res_gen = df_ext_gen.apply(clasificar_gen, axis=1)
                 df_ext_gen['TIPO'] = [r[0] for r in res_gen]
                 df_ext_gen['PDV_SAP'] = [r[1] for r in res_gen]
                 df_ext_gen['CB_SAP'] = [r[2] for r in res_gen]
+                df_ext_gen['BANCO'] = [r[3] for r in res_gen]
                 
                 tot_reg = len(df_ext_gen)
                 tot_monto = df_ext_gen['VALOR_LIMPIO'].sum()
@@ -715,62 +716,52 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DASHBOARD VISUAL: GRÁFICO DE TORTA (DONUT) Y BARRAS HORIZONTALES ---
-                col_chart1, col_chart2 = st.columns(2)
+                # --- DESGLOSE Y FILTRO POR BANCO ---
+                st.markdown("#### 🏦 Desglose de Recaudo por Entidad Bancaria")
+                df_bancos_sum = df_ext_gen.groupby('BANCO').agg(
+                    Partidas=('VALOR_LIMPIO', 'count'),
+                    Monto_Total=('VALOR_LIMPIO', 'sum')
+                ).reset_index()
                 
-                with col_chart1:
-                    st.markdown("##### 🍩 Distribución de Recaudo por Canal")
-                    df_pie = df_ext_gen.groupby('TIPO')['VALOR_LIMPIO'].sum().abs().reset_index()
-                    df_pie.columns = ['Canal', 'Monto']
-                    
-                    fig_pie = px.pie(
-                        df_pie,
-                        names='Canal',
-                        values='Monto',
-                        hole=0.5,
-                        color_discrete_sequence=['#C2185B', '#111827', '#10B981', '#F59E0B', '#EF4444']
-                    )
-                    fig_pie.update_traces(textposition='inside', textinfo='percent+label', textfont_size=11)
-                    fig_pie.update_layout(
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        height=320,
-                        showlegend=False
-                    )
-                    st.plotly_chart(fig_pie, use_container_width=True)
+                cols_bancos = st.columns(min(len(df_bancos_sum), 4) if len(df_bancos_sum) > 0 else 1)
+                for idx, (_, row) in enumerate(df_bancos_sum.iterrows()):
+                    with cols_bancos[idx % len(cols_bancos)]:
+                        st.markdown(f"""
+                            <div class="metric-card">
+                                <div class="metric-title">{row['BANCO']}</div>
+                                <div class="metric-val">{row['Partidas']} partidas</div>
+                                <div class="metric-sub">${row['Monto_Total']:,.2f}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
 
-                with col_chart2:
-                    st.markdown("##### 🏆 Top 10 Puntos de Venta (Mayor Recaudo)")
-                    df_pdv_sum = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP')['VALOR_LIMPIO'].sum().abs().nlargest(10).reset_index()
-                    df_pdv_sum.columns = ['PDV SAP', 'Monto']
-                    
-                    if not df_pdv_sum.empty:
-                        fig_bar = px.bar(
-                            df_pdv_sum,
-                            x='Monto',
-                            y='PDV SAP',
-                            orientation='h',
-                            text_auto='$,.0f',
-                            color='Monto',
-                            color_continuous_scale=['#F472B6', '#C2185B', '#831843']
-                        )
-                        fig_bar.update_layout(
-                            yaxis={'categoryorder':'total ascending'},
-                            margin=dict(t=10, b=10, l=10, r=10),
-                            height=320,
-                            xaxis_title="",
-                            yaxis_title="",
-                            coloraxis_showscale=False
-                        )
-                        fig_bar.update_traces(textfont_size=10, textposition="outside", cliponaxis=False)
-                        st.plotly_chart(fig_bar, use_container_width=True)
-                    else:
-                        st.info("No hay datos de PDV homologados para graficar.")
+                st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- GESTIÓN DE EXCEPCIONES: POR IDENTIFICAR ---
+                # FILTRO POR BANCO PARA EL EXTRACTO GENERAL
+                bancos_disponibles = ["TODOS LOS BANCOS"] + list(df_ext_gen['BANCO'].unique())
+                banco_seleccionado_filtro = st.selectbox("🔍 Filtrar visualización del extracto general por Banco:", bancos_disponibles)
+                
+                if banco_seleccionado_filtro != "TODOS LOS BANCOS":
+                    df_ext_view = df_ext_gen[df_ext_gen['BANCO'] == banco_seleccionado_filtro]
+                else:
+                    df_ext_view = df_ext_gen
+
+                st.dataframe(df_ext_view, use_container_width=True)
+
+                # --- GESTIÓN DE EXCEPCIONES: POR IDENTIFICAR CON BARRA DE BÚSQUEDA ---
                 if len(df_p_gen) > 0:
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown("#### ⚠️ Partidas Por Identificar (Requieren Revisión Auditada)")
-                    st.dataframe(df_p_gen, use_container_width=True)
+                    
+                    # 🔍 BARRA DE BÚSQUEDA EN PARTIDAS POR IDENTIFICAR
+                    filtro_texto_pi = st.text_input("🔍 Buscar en Partidas Por Identificar (por texto, número de documento o valor):", "", key="filtro_pi_texto")
+                    
+                    if filtro_texto_pi:
+                        mask = df_p_gen.astype(str).apply(lambda col: col.str.contains(filtro_texto_pi, case=False)).any(axis=1)
+                        df_p_view = df_p_gen[mask]
+                    else:
+                        df_p_view = df_p_gen
+                        
+                    st.dataframe(df_p_view, use_container_width=True)
                     
                     csv_pi = df_p_gen.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
                     st.download_button(
@@ -782,7 +773,7 @@ else:
                     )
                     
             except Exception as e:
-                st.error(f"Error procesando resumen general: {e}")
+                st.error(f"Error procesando resumen general y bancos: {e}")
 
         st.markdown("<br><hr><br>", unsafe_allow_html=True)
 
@@ -829,27 +820,36 @@ else:
                     def filtrar_c(row):
                         ref_text = str(row.get(col_ref, '')).strip().upper()
                         if ref_text in mapa_multicash and mapa_multicash[ref_text]['tipificacion'] == 'Consignaciones':
-                            return 'SI', mapa_multicash[ref_text]['pdv_sap'], mapa_multicash[ref_text]['cb_sap']
-                        return 'NO', '', ''
+                            info = mapa_multicash[ref_text]
+                            return 'SI', info['pdv_sap'], info['cb_sap'], info['banco']
+                        return 'NO', '', '', ''
 
                     res = df_c_raw.apply(filtrar_c, axis=1)
                     df_c_raw['ES_C'] = [r[0] for r in res]
                     df_c_raw['PDV_SAP'] = [r[1] for r in res]
                     df_c_raw['CB_SAP'] = [r[2] for r in res]
+                    df_c_raw['BANCO'] = [r[3] for r in res]
                     
                     df_c_filtrado = df_c_raw[df_c_raw['ES_C'] == 'SI']
                     
                     st.metric("Total Consignaciones Detectadas", f"{len(df_c_filtrado)} registros", f"${df_c_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # FILTRO INTERACTIVO DE BÚSQUEDA
-                    filtro_pdv_c = st.text_input("🔍 Filtrar por PDV / Tienda o Referencia en pantalla:", "", key="f_c")
-                    if filtro_pdv_c:
-                        df_c_view = df_c_filtrado[df_c_filtrado['PDV_SAP'].astype(str).str.contains(filtro_pdv_c, case=False) | df_c_filtrado[col_ref].astype(str).str.contains(filtro_pdv_c, case=False)]
-                    else:
-                        df_c_view = df_c_filtrado
+                    # FILTRO POR BANCO Y BÚSQUEDA
+                    col_f1, col_f2 = st.columns(2)
+                    with col_f1:
+                        bancos_c = ["TODOS"] + list(df_c_filtrado['BANCO'].unique())
+                        banco_sel_c = st.selectbox("Filtrar Consignaciones por Banco:", bancos_c, key="b_c_sel")
+                    with col_f2:
+                        filtro_pdv_c = st.text_input("🔍 Filtrar por Tienda / Referencia:", "", key="f_c")
 
-                    plano_c = generar_plano_multiusos_consignaciones(df_c_filtrado, codigo_sociedad)
+                    df_c_view = df_c_filtrado
+                    if banco_sel_c != "TODOS":
+                        df_c_view = df_c_view[df_c_view['BANCO'] == banco_sel_c]
+                    if filtro_pdv_c:
+                        df_c_view = df_c_view[df_c_view['PDV_SAP'].astype(str).str.contains(filtro_pdv_c, case=False) | df_c_view[col_ref].astype(str).str.contains(filtro_pdv_c, case=False)]
+
+                    plano_c = generar_plano_multiusos_consignaciones(df_c_view, codigo_sociedad)
                     
                     # AUDITORÍA DE BALANCE CONTABLE
                     tot_deb = plano_c[plano_c['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
@@ -926,17 +926,6 @@ else:
                     df_d_raw['PDV_SAP'] = [r[0] for r in res_d]
                     df_d_raw['CB'] = [r[1] for r in res_d]
                     
-                    df_no_homologados = df_d_raw[df_d_raw['PDV_SAP'] == '']
-                    if len(df_no_homologados) > 0:
-                        comercios_unicos = df_no_homologados[['COMERCIO', 'TERMINAL']].drop_duplicates()
-                        lista_advertencia = ", ".join([f"Comercio: {r['COMERCIO']} (Terminal: {r['TERMINAL']})" for _, r in comercios_unicos.iterrows()])
-                        st.markdown(f"""
-                            <div style="background-color: #F8D7DA; color: #721C24; padding: 15px; border-radius: 10px; border-left: 6px solid #F5C6CB; margin-bottom: 20px;">
-                                <b>⚠️ Alerta de Homologación:</b> Se detectaron <b>{len(df_no_homologados)}</b> registros cuyos comercios no están en el archivo maestro <code>{nombre_archivo_comercios}</code>.<br>
-                                <br><b>Comercios faltantes:</b> {lista_advertencia}<br>
-                            </div>
-                        """, unsafe_allow_html=True)
-
                     st.metric("Total Transacciones Datáfonos", f"{len(df_d_raw)} registros", f"${df_d_raw['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
@@ -947,7 +936,7 @@ else:
                     else:
                         df_d_view = df_d_raw
 
-                    plano_d = generar_plano_multiusos_datafonos(df_d_raw, df_matriz_dtf, codigo_sociedad)
+                    plano_d = generar_plano_multiusos_datafonos(df_d_view, df_matriz_dtf, codigo_sociedad)
                     
                     # AUDITORÍA DE BALANCE CONTABLE
                     tot_deb = plano_d[plano_d['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
@@ -1021,17 +1010,6 @@ else:
                         res_q = df_q_raw.apply(mapear_comercio_qr, axis=1)
                         df_q_raw['PDV_SAP'] = [r[0] for r in res_q]
                         df_q_raw['CB'] = [r[1] for r in res_q]
-                        
-                        df_no_homologados_q = df_q_raw[df_q_raw['PDV_SAP'] == '']
-                        if len(df_no_homologados_q) > 0:
-                            comercios_unicos_q = df_no_homologados_q[['CODIGO UNICO', 'NUMERO DE TERMINAL']].drop_duplicates()
-                            lista_advertencia_q = ", ".join([f"Comercio: {r['CODIGO UNICO']} (Terminal: {r['NUMERO DE TERMINAL']})" for _, r in comercios_unicos_q.iterrows()])
-                            st.markdown(f"""
-                                <div style="background-color: #F8D7DA; color: #721C24; padding: 15px; border-radius: 10px; border-left: 6px solid #F5C6CB; margin-bottom: 20px;">
-                                    <b>⚠️ Alerta de Homologación QR:</b> Se detectaron <b>{len(df_no_homologados_q)}</b> registros cuyos códigos no están en el maestro <code>{nombre_archivo_comercios}</code>.<br>
-                                    <br><b>Códigos faltantes:</b> {lista_advertencia_q}<br>
-                                </div>
-                            """, unsafe_allow_html=True)
 
                         st.metric("Total Transacciones QR", f"{len(df_q_raw)} registros", f"${df_q_raw['VALOR_LIMPIO'].sum():,.2f}")
                         st.markdown("<br>", unsafe_allow_html=True)
@@ -1043,7 +1021,7 @@ else:
                         else:
                             df_q_view = df_q_raw
 
-                        plano_q = generar_plano_multiusos_qr(df_q_raw, df_matriz_dtf, codigo_sociedad)
+                        plano_q = generar_plano_multiusos_qr(df_q_view, df_matriz_dtf, codigo_sociedad)
                         
                         # AUDITORÍA DE BALANCE CONTABLE
                         tot_deb = plano_q[plano_q['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
@@ -1126,7 +1104,7 @@ else:
                     else:
                         df_pw_view = df_pw_raw
 
-                    plano_pw = generar_plano_multiusos_payments_way(df_pw_raw, df_matriz_dtf, codigo_sociedad)
+                    plano_pw = generar_plano_multiusos_payments_way(df_pw_view, df_matriz_dtf, codigo_sociedad)
                     
                     # AUDITORÍA DE BALANCE CONTABLE
                     tot_deb = plano_pw[plano_pw['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
