@@ -621,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v37")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v38")
         
         if uploaded_multicash_gen:
             try:
@@ -715,7 +715,7 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DASHBOARD VISUALIZACIÓN GRÁFICA EXACTA CON ETIQUETAS EN DONA ---
+                # --- DASHBOARD VISUALIZACIÓN GRÁFICA IDÉNTICA A TU CAPTURA ---
                 col_chart1, col_chart2 = st.columns(2)
                 
                 color_domain = ['Consignaciones', 'Datafonos', 'POR IDENTIFICAR', 'QR']
@@ -728,33 +728,18 @@ else:
                         Cantidad=('VALOR_LIMPIO', 'count')
                     ).reset_index()
                     
-                    # Calcular porcentajes exactos para mostrar en la dona
-                    total_monto_pie = df_pie['Monto'].sum()
-                    if total_monto_pie > 0:
-                        df_pie['Porcentaje'] = (df_pie['Monto'] / total_monto_pie) * 100
-                        df_pie['Etiqueta'] = df_pie['TIPO'] + " (" + df_pie['Porcentaje'].round(1).astype(str) + "%)"
-                    else:
-                        df_pie['Etiqueta'] = df_pie['TIPO']
-
-                    base_pie = alt.Chart(df_pie).encode(
+                    # Gráfico de dona limpio con leyenda inferior, tal cual tu diseño original
+                    chart_donut = alt.Chart(df_pie).mark_arc(innerRadius=70, outerRadius=110, stroke='#FFFFFF', strokeWidth=2).encode(
                         theta=alt.Theta(field="Monto", type="quantitative"),
                         color=alt.Color(
                             field="TIPO", 
                             type="nominal", 
                             scale=alt.Scale(domain=color_domain, range=color_range), 
-                            legend=None
-                        )
-                    )
+                            legend=alt.Legend(title="Canal", orient="bottom")
+                        ),
+                        tooltip=['TIPO', alt.Tooltip('Monto', format="$,.2f", title="Monto Total"), 'Cantidad']
+                    ).properties(height=320).configure_view(strokeWidth=0)
                     
-                    # Capa de la dona
-                    arc = base_pie.mark_arc(innerRadius=70, outerRadius=110, stroke='#FFFFFF', strokeWidth=2)
-                    
-                    # Capa de etiquetas de texto rotuladas directamente sobre los segmentos
-                    text_pie = base_pie.mark_text(radius=130, size=11, fontWeight='bold').encode(
-                        text=alt.Text('Etiqueta:N')
-                    )
-                    
-                    chart_donut = (arc + text_pie).properties(height=320).configure_view(strokeWidth=0)
                     st.altair_chart(chart_donut, use_container_width=True)
 
                 with col_chart2:
