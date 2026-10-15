@@ -425,9 +425,7 @@ else:
                 # PESTAÑA 1: CONSIGNACIONES
                 with tab_cons:
                     st.markdown(f"### 🏦 Plano Multiusos • Consignaciones")
-                    col_m1, col_btn1 = st.columns([1.5, 2])
-                    with col_m1:
-                        st.metric("Total Consignaciones", f"{len(df_c)} registros", f"${df_c['VALOR_LIMPIO'].sum():,.2f}")
+                    st.metric("Total Consignaciones Detectadas", f"{len(df_c)} registros", f"${df_c['VALOR_LIMPIO'].sum():,.2f}")
                     
                     if len(df_c) > 0:
                         plano_c = generar_plano_multiusos(df_c, "CG", codigo_sociedad)
@@ -441,25 +439,22 @@ else:
                         wb_c_est.save(final_c)
                         final_c.seek(0)
                         
-                        with col_btn1:
-                            st.markdown("<br>", unsafe_allow_html=True)
-                            st.download_button(
-                                label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
-                                data=final_c,
-                                file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key="dl_c_btn",
-                                use_container_width=True
-                            )
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.download_button(
+                            label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
+                            data=final_c,
+                            file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_c_btn_new",
+                            use_container_width=True
+                        )
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.dataframe(df_c, use_container_width=True)
 
                 # PESTAÑA 2: DATÁFONOS
                 with tab_dtf:
                     st.markdown(f"### 💳 Plano Multiusos • Datáfonos")
-                    col_m2, col_btn2 = st.columns([1.5, 2])
-                    with col_m2:
-                        st.metric("Total Datáfonos", f"{len(df_d)} registros", f"${df_d['VALOR_LIMPIO'].sum():,.2f}")
+                    st.metric("Total Datáfonos Detectados", f"{len(df_d)} registros", f"${df_d['VALOR_LIMPIO'].sum():,.2f}")
                     
                     if len(df_d) > 0:
                         plano_d = generar_plano_multiusos(df_d, "DTF", codigo_sociedad)
@@ -473,25 +468,22 @@ else:
                         wb_d_est.save(final_d)
                         final_d.seek(0)
                         
-                        with col_btn2:
-                            st.markdown("<br>", unsafe_allow_html=True)
-                            st.download_button(
-                                label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
-                                data=final_d,
-                                file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key="dl_d_btn",
-                                use_container_width=True
-                            )
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.download_button(
+                            label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
+                            data=final_d,
+                            file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_d_btn_new",
+                            use_container_width=True
+                        )
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.dataframe(df_d, use_container_width=True)
 
                 # PESTAÑA 3: CÓDIGOS QR
                 with tab_qr:
                     st.markdown(f"### 📱 Plano Multiusos • Códigos QR")
-                    col_m3, col_btn3 = st.columns([1.5, 2])
-                    with col_m3:
-                        st.metric("Total Códigos QR", f"{len(df_q)} registros", f"${df_q['VALOR_LIMPIO'].sum():,.2f}")
+                    st.metric("Total Códigos QR Detectados", f"{len(df_q)} registros", f"${df_q['VALOR_LIMPIO'].sum():,.2f}")
                     
                     if len(df_q) > 0:
                         plano_q = generar_plano_multiusos(df_q, "QR", codigo_sociedad)
@@ -505,16 +497,15 @@ else:
                         wb_q_est.save(final_q)
                         final_q.seek(0)
                         
-                        with col_btn3:
-                            st.markdown("<br>", unsafe_allow_html=True)
-                            st.download_button(
-                                label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
-                                data=final_q,
-                                file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key="dl_q_btn",
-                                use_container_width=True
-                            )
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.download_button(
+                            label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
+                            data=final_q,
+                            file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_q_btn_new",
+                            use_container_width=True
+                        )
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.dataframe(df_q, use_container_width=True)
 
