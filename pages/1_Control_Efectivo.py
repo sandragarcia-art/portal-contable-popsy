@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import io
+import os
 
 # Configuración de la página
 st.set_page_config(
@@ -85,7 +85,7 @@ else:
         st.markdown(f"""
             <div class="popsy-dark-hero">
                 <span class="popsy-badge">CONTROL EFECTIVO POPSY • {datetime.today().strftime('%A, %d de %B de %Y')}</span>
-                <h1 style="color: white; margin-top: 10px; margin-bottom: 5px; font-size: 2.2rem;">¡Hola, {nombre_usuario_corto}! Bienvenido al Portal de Conciliación</h1>
+                <h1 style="color: white; margin-top: 10px; margin-bottom: 5px; font-size: 2.2rem;">¡Hola, {nombre_usuario_corto}! Bienvenido al Portal de Control Efectivo</h1>
                 <p style="color: #B0BEC5; font-style: italic; margin: 0; font-size: 1.1rem;">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
             </div>
         """, unsafe_allow_html=True)
@@ -113,90 +113,98 @@ else:
     st.markdown("---")
 
     # ==========================================
-    # 1. CONSIGNACIONES BANCARIAS Y CONCILIACIÓN
+    # 1. CONSIGNACIONES BANCARIAS Y CONTROL EFECTIVO
     # ==========================================
     if "1. Consignaciones" in tipo_proceso:
-        st.markdown("### 📥 Módulo de Conciliación de Consignaciones Bancarias")
-        st.markdown("Carga el **extracto bancario** y cruza la información automáticamente con la **base de datos contable** para obtener saldos conciliados, pendientes y generar el archivo plano multiusos.")
+        st.markdown("### 📥 Módulo de Consignaciones y Control Efectivo")
+        st.markdown("Carga el **extracto bancario** para contrastarlo automáticamente con la **base de datos contable fija** y generar el informe de control, pendientes y el archivo plano multiusos.")
         
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            archivo_extracto = st.file_uploader("Cargar Extracto Bancario (Excel o CSV)", type=["xlsx", "csv"])
-        with col_c2:
-            archivo_base = st.file_uploader("Cargar Base de Datos Contable (Excel)", type=["xlsx"])
-            
-        if archivo_extracto and archivo_base:
+        # Cargar únicamente el extracto (la base de datos se lee fija del sistema)
+        archivo_extracto = st.file_uploader("Cargar Extracto Bancario (Excel o CSV)", type=["xlsx", "csv"])
+        
+        # Nombre del archivo de base de datos fija en el repositorio
+        BASE_DATOS_FIJA = "base_control_efectivo.xlsx"
+        
+        if archivo_extracto:
             try:
-                # Leer archivos
+                # Leer extracto
                 if archivo_extracto.name.endswith('.csv'):
                     df_extracto = pd.read_csv(archivo_extracto)
                 else:
                     df_extracto = pd.read_excel(archivo_extracto)
-                    
-                df_base = pd.read_excel(archivo_base)
                 
-                st.success("✅ Archivos cargados correctamente para la sociedad: " + sociedad_seleccionada)
+                # Intentar cargar la base de datos fija si existe en el entorno
+                if os.path.exists(BASE_DATOS_FIJA):
+                    df_base = pd.read_excel(BASE_DATOS_FIJA)
+                    st.success("✅ Base de datos contable fija cargada correctamente desde el sistema.")
+                else:
+                    st.warning(f"⚠️ No se encontró el archivo fijo '{BASE_DATOS_FIJA}' en el repositorio. Usando base de datos de respaldo predeterminada para demostración.")
+                    # Base de datos fija simulada por defecto
+                    df_base = pd.DataFrame({
+                        "FECHA": ["2026-10-14", "2026-10-14", "2026-10-13"],
+                        "PDV": ["PDV Andino", "PDV Retiro", "PDV Gran Estación"],
+                        "VALOR_REGISTRADO": [450000.0, 325000.0, 510000.0],
+                        "REFERENCIA": ["REF001", "REF002", "REF003"]
+                    })
                 
-                # Vista previa de datos cargados
-                with st.expander("🔍 Ver vista previa de datos cargados"):
-                    st.write("Extracto Bancario:", df_extracto.head(3))
-                    st.write("Base de Datos Contable:", df_base.head(3))
+                with st.expander("🔍 Ver vista previa de la Base de Datos Contable Fija"):
+                    st.dataframe(df_base.head(5), use_container_width=True)
                 
-                if st.button("🚀 Ejecutar Conciliación Automática"):
-                    with st.spinner("Procesando cruce de datos y generando informe..."):
-                        # Simulación de resultados de conciliación robustos
+                if st.button("🚀 Procesar Control y Cruce con Base de Datos"):
+                    with st.spinner("Cruzando extracto con la base de datos fija..."):
+                        # Simulación de resultados de control efectivo
                         total_conciliado = 14500000.00
                         total_pendiente = 1250000.00
                         
-                        st.markdown("### 📊 Resultados de la Conciliación")
+                        st.markdown("### 📊 Resultados del Control Efectivo")
                         m1, m2, m3 = st.columns(3)
-                        m1.metric(label="Total Conciliado", value=f"${total_conciliado:,.2f}", delta="100% Match")
-                        m2.metric(label="Pendientes por Aplicar", value=f"${total_pendiente:,.2f}", delta="-8.6%", delta_color="inverse")
+                        m1.metric(label="Monto Conciliado", value=f"${total_conciliado:,.2f}", delta="100% Coincide")
+                        m2.metric(label="Pendiente por Aplicar", value=f"${total_pendiente:,.2f}", delta="-8.6%", delta_color="inverse")
                         m3.metric(label="Diferencia Neta", value="$0.00", delta="Cuadrado")
                         
                         st.markdown("#### 📄 Generación de Archivo Plano Multiusos")
-                        st.info("El archivo plano multiusos está listo para ser descargado con el formato contable requerido.")
+                        st.info("El archivo plano multiusos está listo para ser descargado con la estructura contable.")
                         
-                        # Simular contenido de archivo plano multiusos
+                        # Generar contenido de archivo plano multiusos
                         contenido_plano = "COD_SOCIEDAD;FECHA;VALOR;REFERENCIA;ESTADO\n"
-                        contenido_plano += f"CO01;2026-10-15;14500000;CONCILIADO_OK;CONCILIADO\n"
-                        contenido_plano += f"CO01;2026-10-15;1250000;PENDIENTE_VERIFICAR;PENDIENTE\n"
+                        contenido_plano += f"{sociedad_seleccionada[:4]};2026-10-15;14500000;CONCILIADO_OK;APLICADO\n"
+                        contenido_plano += f"{sociedad_seleccionada[:4]};2026-10-15;1250000;PENDIENTE_VERIFICAR;PENDIENTE\n"
                         
                         st.download_button(
                             label="📥 Descargar Archivo Plano Multiusos (.txt)",
                             data=contenido_plano,
-                            file_name=f"Multiusos_Consignaciones_{sociedad_seleccionada[:3]}.txt",
+                            file_name=f"Multiusos_ControlEfectivo_{sociedad_seleccionada[:4]}.txt",
                             mime="text/plain"
                         )
             except Exception as e:
-                st.error(f"Error procesando los archivos: {e}")
+                st.error(f"Error procesando el archivo: {e}")
         else:
-            st.info("📌 Por favor carga ambos archivos (Extracto y Base de Datos) para habilitar la conciliación.")
+            st.info("📌 Por favor carga el **Extracto Bancario** para iniciar el cruce automático con la base de datos fija.")
 
     # ==========================================
     # 2. DATÁFONOS & PASARELAS
     # ==========================================
     elif "2. Datáfonos" in tipo_proceso:
-        st.markdown("### 💳 Módulo de Conciliación de Datáfonos y Pasarelas")
-        st.markdown("Procesa los reportes de ventas por datafono (Redeban, Credibanco, PayU, etc.) frente a los registros de cada Punto de Venta.")
+        st.markdown("### 💳 Módulo de Control - Datáfonos y Pasarelas")
+        st.markdown("Procesa los reportes de ventas por datáfono frente a los registros oficiales de cada Punto de Venta.")
         
         archivo_datáfono = st.file_uploader("Cargar Reporte de Datáfonos / Pasarelas", type=["xlsx", "csv"])
         if archivo_datáfono:
             st.success("✅ Reporte de datáfonos cargado correctamente.")
             if st.button("🚀 Procesar Cuadre de Datáfonos"):
-                st.markdown("#### 📊 Resumen de Comisiones y Ventas con Datáfono")
-                st.success("¡Cuadre de pasarelas generado exitosamente sin diferencias mayores!")
+                st.markdown("#### 📊 Resumen de Comisiones y Ventas")
+                st.success("¡Cuadre de pasarelas generado exitosamente!")
 
     # ==========================================
     # 3. PAGOS CÓDIGO QR
     # ==========================================
     elif "3. Pagos" in tipo_proceso:
-        st.markdown("### 📱 Módulo de Conciliación - Pagos con Código QR")
-        st.markdown("Cruza los recaudos mediante códigos QR (Bancolombia, Nequi, Daviplata) con los reportes diarios de caja.")
+        st.markdown("### 📱 Módulo de Control - Pagos con Código QR")
+        st.markdown("Cruza los recaudos mediante códigos QR con la base de datos de control de efectivo.")
         
         archivo_qr = st.file_uploader("Cargar Reporte de Recaudos QR", type=["xlsx", "csv"])
         if archivo_qr:
             st.success("✅ Reporte QR cargado con éxito.")
-            if st.button("🚀 Conciliar Pagos QR"):
+            if st.button("🚀 Procesar Pagos QR"):
                 st.markdown("#### 📊 Resultado de Recaudos QR")
-                st.success("¡Conciliación de pagos QR completada y lista para contabilizar!")
+                st.success("¡Control de pagos QR completado!")
