@@ -190,12 +190,19 @@ else:
         st.session_state.autenticado = False
         st.rerun()
 
+    # --- CONFIGURACIÓN DINÁMICA SEGÚN SOCIEDAD ---
     if "CO01" in sociedad_seleccionada:
         codigo_sociedad = "CO01"
         nombre_archivo_base = "base_control_efectivo.xlsx"
+        nombre_archivo_matriz_dtf = "base_datafonos.xlsx"
+        nombre_archivo_comercios = "Comercio Datafonos.xlsx"
+        maneja_qr = True
     elif "CO02" in sociedad_seleccionada:
         codigo_sociedad = "CO02"
         nombre_archivo_base = "base_datos_co02.xlsx"
+        nombre_archivo_matriz_dtf = "base_datafonos_co02.xlsx"
+        nombre_archivo_comercios = "Comercio Datafonos_co02.xlsx"
+        maneja_qr = False
     else:
         codigo_sociedad = None
 
@@ -360,7 +367,6 @@ else:
                 except:
                     valor_val = 0
                 
-                # Omitir líneas cuyo valor sea 0
                 if valor_val == 0:
                     continue
                 
@@ -385,12 +391,12 @@ else:
         st.warning(f"🚧 La sociedad **{sociedad_seleccionada}** se encuentra en proceso de implementación.")
     elif not os.path.exists(nombre_archivo_base):
         st.error(f"⚠️ No se encontró el archivo maestro '{nombre_archivo_base}' en la raíz del repositorio.")
-    elif not os.path.exists("base_datafonos.xlsx"):
-        st.error(f"⚠️ No se encontró el archivo 'base_datafonos.xlsx' en la raíz del repositorio.")
-    elif not os.path.exists("Comercio Datafonos.xlsx"):
-        st.error(f"⚠️ No se encontró el archivo 'Comercio Datafonos.xlsx' en la raíz del repositorio.")
+    elif not os.path.exists(nombre_archivo_matriz_dtf):
+        st.error(f"⚠️ No se encontró el archivo '{nombre_archivo_matriz_dtf}' en la raíz del repositorio.")
+    elif not os.path.exists(nombre_archivo_comercios):
+        st.error(f"⚠️ No se encontró el archivo '{nombre_archivo_comercios}' en la raíz del repositorio.")
     else:
-        # Cargar bases de referencia
+        # Cargar bases de referencia específicas de la sociedad
         df_base_tiendas = pd.read_excel(nombre_archivo_base, sheet_name='Hoja1')
         df_base_tiendas.columns = [str(c).strip().upper() for c in df_base_tiendas.columns]
         df_base_tiendas['TEXTO_CLEAN'] = df_base_tiendas['TEXTO MULTICAHS'].astype(str).str.strip().str.upper()
@@ -403,12 +409,12 @@ else:
                 'tipificacion': r.get('TIPIFICACION', '')
             }
 
-        # Cargar matriz de datáfonos
-        df_matriz_dtf = pd.read_excel('base_datafonos.xlsx')
+        # Cargar matriz de datáfonos específica de la sociedad
+        df_matriz_dtf = pd.read_excel(nombre_archivo_matriz_dtf)
         df_matriz_dtf.columns = [str(c).strip().upper() for c in df_matriz_dtf.columns]
 
-        # Cargar maestro de comercios de datáfonos
-        df_comercios_dtf = pd.read_excel('Comercio Datafonos.xlsx')
+        # Cargar maestro de comercios de datáfonos específico de la sociedad
+        df_comercios_dtf = pd.read_excel(nombre_archivo_comercios)
         df_comercios_dtf.columns = [str(c).strip().upper() for c in df_comercios_dtf.columns]
         
         mapa_comercios = {}
@@ -429,7 +435,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v13")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v14")
         
         if uploaded_multicash_gen:
             try:
@@ -465,7 +471,7 @@ else:
                 
                 df_c_gen = df_ext_gen[df_ext_gen['TIPO'] == 'Consignaciones']
                 df_d_gen = df_ext_gen[df_ext_gen['TIPO'] == 'Datafonos']
-                df_q_gen = df_ext_gen[df_ext_gen['TIPO'] == 'QR']
+                df_q_gen = df_ext_gen[df_ext_gen['TIPO'] == 'QR'] if maneja_qr else pd.DataFrame()
                 df_p_gen = df_ext_gen[df_ext_gen['TIPO'] == 'POR IDENTIFICAR']
                 
                 st.markdown("#### 📊 Diagnóstico General del Extracto")
@@ -496,13 +502,22 @@ else:
                         </div>
                     """, unsafe_allow_html=True)
                 with c4:
-                    st.markdown(f"""
-                        <div class="metric-card">
-                            <div class="metric-title">QR</div>
-                            <div class="metric-val">{len(df_q_gen)} part.</div>
-                            <div class="metric-sub">${df_q_gen['VALOR_LIMPIO'].sum():,.2f}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
+                    if maneja_qr:
+                        st.markdown(f"""
+                            <div class="metric-card">
+                                <div class="metric-title">QR</div>
+                                <div class="metric-val">{len(df_q_gen)} part.</div>
+                                <div class="metric-sub">${df_q_gen['VALOR_LIMPIO'].sum():,.2f}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                            <div class="metric-card" style="opacity: 0.5;">
+                                <div class="metric-title">QR</div>
+                                <div class="metric-val">N/A</div>
+                                <div class="metric-sub">No Aplica</div>
+                            </div>
+                        """, unsafe_allow_html=True)
                 with c5:
                     st.markdown(f"""
                         <div class="metric-card">
@@ -520,11 +535,18 @@ else:
         # ==========================================
         # 2. PESTAÑAS INDEPENDIENTES Y PLANOS MULTIUSOS
         # ==========================================
-        tab_cons, tab_dtf, tab_qr = st.tabs([
-            "🏦 1. Consignaciones", 
-            "💳 2. Datáfonos", 
-            "📱 3. Códigos QR"
-        ])
+        if maneja_qr:
+            tab_cons, tab_dtf, tab_qr = st.tabs([
+                "🏦 1. Consignaciones", 
+                "💳 2. Datáfonos", 
+                "📱 3. Códigos QR"
+            ])
+        else:
+            tab_cons, tab_dtf = st.tabs([
+                "🏦 1. Consignaciones", 
+                "💳 2. Datáfonos"
+            ])
+            tab_qr = None
 
         # --- MÓDULO 1: CONSIGNACIONES ---
         with tab_cons:
@@ -583,7 +605,7 @@ else:
         # --- MÓDULO 2: DATÁFONOS ---
         with tab_dtf:
             st.markdown(f"### 💳 Módulo de Datáfonos • {sociedad_seleccionada}")
-            st.markdown("Sube el **Archivo Plano de Datáfonos** para procesarlo y generar automáticamente el Plano Multiusos SAP (omitiendo valores en 0).")
+            st.markdown(f"Sube el **Archivo Plano de Datáfonos** para procesarlo con la matriz específica de **{sociedad_seleccionada}**.")
             
             uploaded_dtf = st.file_uploader("Sube el Archivo Plano de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_final")
             
@@ -621,7 +643,7 @@ else:
                         lista_advertencia = ", ".join([f"Comercio: {r['COMERCIO']} (Terminal: {r['TERMINAL']})" for _, r in comercios_unicos.iterrows()])
                         st.markdown(f"""
                             <div style="background-color: #F8D7DA; color: #721C24; padding: 15px; border-radius: 10px; border-left: 6px solid #F5C6CB; margin-bottom: 20px;">
-                                <b>⚠️ Alerta de Homologación:</b> Se detectaron <b>{len(df_no_homologados)}</b> registros cuyos comercios no están en el archivo maestro <code>Comercio Datafonos.xlsx</code>.<br>
+                                <b>⚠️ Alerta de Homologación:</b> Se detectaron <b>{len(df_no_homologados)}</b> registros cuyos comercios no están en el archivo maestro <code>{nombre_archivo_comercios}</code>.<br>
                                 <br><b>Comercios faltantes:</b> {lista_advertencia}<br>
                                 <i>Por favor agrégalos a tu archivo maestro en GitHub para que queden mapeados correctamente.</i>
                             </div>
@@ -630,7 +652,7 @@ else:
                     st.metric("Total Transacciones Datáfonos", f"{len(df_d_raw)} registros", f"${df_d_raw['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    with st.spinner("Generando el Plano Multiusos SAP de Datáfonos (excluyendo valores en 0)... Por favor espera ⏳"):
+                    with st.spinner(f"Generando el Plano Multiusos SAP de Datáfonos para {sociedad_seleccionada}... Por favor espera ⏳"):
                         plano_d = generar_plano_multiusos_datafonos(df_d_raw, df_matriz_dtf, codigo_sociedad)
                         csv_d = plano_d.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
                     
@@ -649,7 +671,8 @@ else:
                 except Exception as e:
                     st.error(f"Error procesando datáfonos: {e}")
 
-        # --- MÓDULO 3: CÓDIGOS QR ---
-        with tab_qr:
-            st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
-            st.markdown("Próximamente disponible con la misma estructura multi-línea automatizada.")
+        # --- MÓDULO 3: CÓDIGOS QR (SI APLICA) ---
+        if maneja_qr and tab_qr is not None:
+            with tab_qr:
+                st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
+                st.markdown("Próximamente disponible con la misma estructura multi-línea automatizada.")
