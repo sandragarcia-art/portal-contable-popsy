@@ -128,7 +128,7 @@ else:
     # --- TOP BAR SUPERIOR ---
     st.markdown(f"""
         <div class="top-bar">
-            <div class="brand-logo">PORTAL CONTABLE POPSY</div>
+            <div class="brand-logo">CONTROL EFECTIVO POPSY</div>
             <div class="user-pill">
                 <div class="avatar">{nombre_corto[0]}</div>
                 <div class="user-info">
@@ -143,8 +143,8 @@ else:
     fecha_actual = datetime.now().strftime('%A, %d de %B de %Y').capitalize()
     st.markdown(f"""
         <div class="hero-banner">
-            <div class="badge-tag">🍦 CONTROL BANCARIO & EFECTIVO • {fecha_actual}</div>
-            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico y Conciliación Multicash</h1>
+            <div class="badge-tag">🍦 CONTROL EFECTIVO & MULTICASH • {fecha_actual}</div>
+            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico y Clasificación Automática</h1>
             <p class="hero-sub">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
         </div>
     """, unsafe_allow_html=True)
@@ -180,8 +180,14 @@ else:
     # --- CARGA DEL EXTRACTO Y CLASIFICACIÓN CON BASE UNIFICADA ---
     st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario • {sociedad_seleccionada}")
     
-    if codigo_sociedad and os.path.exists(nombre_archivo_base):
-        uploaded_multicash = st.file_uploader(f"Sube el Extracto Bancario para Diagnóstico y Procesamiento ({sociedad_seleccionada})", type=["xlsx", "csv"], key="diag_multicash_v2")
+    if codigo_sociedad is None:
+        st.warning(f"🚧 La sociedad **{sociedad_seleccionada}** se encuentra en proceso de implementación.")
+    elif not os.path.exists(nombre_archivo_base):
+        st.error(f"⚠️ No se encontró el archivo maestro '{nombre_archivo_base}' en la raíz del repositorio.")
+    else:
+        st.success(f"📁 Archivo maestro de referencia cargado: **{nombre_archivo_base}** (Sociedad: {codigo_sociedad})")
+        
+        uploaded_multicash = st.file_uploader(f"Sube el Extracto Bancario para Diagnóstico y Procesamiento ({sociedad_seleccionada})", type=["xlsx", "XLSX", "xls"], key="diag_multicash_v3")
 
         if uploaded_multicash:
             try:
@@ -189,7 +195,11 @@ else:
                 df_base_tiendas = pd.read_excel(nombre_archivo_base, sheet_name='Hoja1')
                 df_cuentas_bancos = pd.read_excel(nombre_archivo_base, sheet_name='Cuentas_Bancos')
                 
-                df_extracto = pd.read_excel(uploaded_multicash) if uploaded_multicash.name.endswith('.xlsx') else pd.read_csv(uploaded_multicash)
+                # Cargar extracto soportando mayúsculas y minúsculas en extensión
+                if uploaded_multicash.name.lower().endswith(('.xlsx', '.xls')):
+                    df_extracto = pd.read_excel(uploaded_multicash)
+                else:
+                    df_extracto = pd.read_csv(uploaded_multicash, encoding='latin1')
                 
                 # Normalizar nombres de columnas
                 df_base_tiendas.columns = [str(c).strip().upper() for c in df_base_tiendas.columns]
@@ -206,18 +216,16 @@ else:
                         'tipificacion': r.get('TIPIFICACION', '')
                     }
                     
-                # Detectar columna de texto en el extracto (normalmente Columna J o similar)
+                # Detectar columna de texto en el extracto
                 col_ref_ext = df_extracto.columns[min(9, len(df_extracto.columns) - 1)]
                 
                 def clasificar_con_maestra(row):
                     ref_text = str(row.get(col_ref_ext, '')).strip().upper()
                     
-                    # 1. Búsqueda exacta o parcial en Hoja1
                     if ref_text in mapa_multicash:
                         info = mapa_multicash[ref_text]
                         return info['tipificacion'], info['pdv_sap'], info['cb_sap']
                     
-                    # Búsqueda por contención
                     for k, info in mapa_multicash.items():
                         if k and k in ref_text:
                             return info['tipificacion'], info['pdv_sap'], info['cb_sap']
@@ -239,9 +247,9 @@ else:
                 st.markdown("#### 📊 Diagnóstico y Clasificación Unificada")
                 m1, m2, m3, m4, m5 = st.columns(5)
                 m1.metric("📄 Total Extracto", f"{total_registros} partidas")
-                m2.metric("🏦 Consignaciones", f"{len(df_cons)} partidas", f"{(len(df_cons)/total_registros)*100:.1f}%")
-                m3.metric("💳 Datáfonos", f"{len(df_dtf)} partidas", f"{(len(df_dtf)/total_registros)*100:.1f}%")
-                m4.metric("📱 QR", f"{len(df_qr)} partidas", f"{(len(df_qr)/total_registros)*100:.1f}%")
+                m2.metric("🏦 Consignaciones", f"{len(df_cons)} partidas", f"{(len(df_cons)/total_registros)*100:.1f}%" if total_registros > 0 else "0.0%")
+                m3.metric("💳 Datáfonos", f"{len(df_dtf)} partidas", f"{(len(df_dtf)/total_registros)*100:.1f}%" if total_registros > 0 else "0.0%")
+                m4.metric("📱 QR", f"{len(df_qr)} partidas", f"{(len(df_qr)/total_registros)*100:.1f}%" if total_registros > 0 else "0.0%")
                 m5.metric("❓ Por Identificar", f"{len(df_por_id)} partidas", delta_color="inverse")
                 
                 st.markdown("---")
