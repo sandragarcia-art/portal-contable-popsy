@@ -620,7 +620,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v31")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v32")
         
         if uploaded_multicash_gen:
             try:
@@ -714,6 +714,28 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
+                # --- GRÁFICO DE TORTA (PIE CHART) DE DISTRIBUCIÓN ---
+                col_chart1, col_chart2 = st.columns([2, 1])
+                with col_chart1:
+                    st.markdown("#### 🥧 Distribución de Partidas por Tipificación")
+                    df_pie = df_ext_gen.groupby('TIPO').agg(
+                        Cantidad=('VALOR_LIMPIO', 'count'),
+                        Monto=('VALOR_LIMPIO', 'sum')
+                    ).reset_index()
+                    st.altair_chart(
+                        __import__('altair').Chart(df_pie).mark_arc(innerRadius=50).encode(
+                            theta=__import__('altair').Theta(field="Cantidad", type="quantitative"),
+                            color=__import__('altair').Color(field="TIPO", type="nominal", legend=__import__('altair').Legend(title="Tipificación")),
+                            tooltip=['TIPO', 'Cantidad', __import__('altair').Tooltip('Monto', format="$,.2f")]
+                        ).properties(height=280),
+                        use_container_width=True
+                    )
+                with col_chart2:
+                    st.markdown("#### 📌 Resumen Rápido")
+                    st.dataframe(df_pie, use_container_width=True, hide_index=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
                 # VISUALIZACIÓN DIRECTA DEL EXTRACTO GENERAL COMPLETO
                 st.markdown("#### 📋 Detalle del Extracto General")
                 st.dataframe(df_ext_gen, use_container_width=True)
@@ -723,7 +745,6 @@ else:
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown("#### ⚠️ Partidas Por Identificar (Requieren Revisión Auditada)")
                     
-                    # 🔍 BARRA DE BÚSQUEDA EN PARTIDAS POR IDENTIFICAR
                     filtro_texto_pi = st.text_input("🔍 Buscar en Partidas Por Identificar (por texto, número de documento o valor):", "", key="filtro_pi_texto")
                     
                     if filtro_texto_pi:
@@ -813,7 +834,6 @@ else:
 
                     plano_c = generar_plano_multiusos_consignaciones(df_c_view, codigo_sociedad)
                     
-                    # AUDITORÍA DE BALANCE CONTABLE
                     tot_deb = plano_c[plano_c['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
                     tot_cred = plano_c[plano_c['CLAVE CONTABILIZACION'] == 50]['VALOR TR'].sum()
                     
@@ -899,7 +919,6 @@ else:
 
                     plano_d = generar_plano_multiusos_datafonos(df_d_view, df_matriz_dtf, codigo_sociedad)
                     
-                    # AUDITORÍA DE BALANCE CONTABLE
                     tot_deb = plano_d[plano_d['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
                     tot_cred = plano_d[plano_d['CLAVE CONTABILIZACION'] == 50]['VALOR TR'].sum()
                     
@@ -983,7 +1002,6 @@ else:
 
                         plano_q = generar_plano_multiusos_qr(df_q_view, df_matriz_dtf, codigo_sociedad)
                         
-                        # AUDITORÍA DE BALANCE CONTABLE
                         tot_deb = plano_q[plano_q['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
                         tot_cred = plano_q[plano_q['CLAVE CONTABILIZACION'] == 50]['VALOR TR'].sum()
                         
@@ -1065,7 +1083,6 @@ else:
 
                     plano_pw = generar_plano_multiusos_payments_way(df_pw_view, df_matriz_dtf, codigo_sociedad)
                     
-                    # AUDITORÍA DE BALANCE CONTABLE
                     tot_deb = plano_pw[plano_pw['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
                     tot_cred = plano_pw[plano_pw['CLAVE CONTABILIZACION'] == 50]['VALOR TR'].sum()
                     
