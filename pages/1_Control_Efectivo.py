@@ -620,7 +620,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v32")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v33")
         
         if uploaded_multicash_gen:
             try:
@@ -714,8 +714,9 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- GRÁFICO DE TORTA (PIE CHART) DE DISTRIBUCIÓN ---
-                col_chart1, col_chart2 = st.columns([2, 1])
+                # --- GRÁFICOS DEL DASHBOARD: DISTRIBUCIÓN Y TOP 10 PUNTOS DE VENTA ---
+                col_chart1, col_chart2 = st.columns(2)
+                
                 with col_chart1:
                     st.markdown("#### 🥧 Distribución de Partidas por Tipificación")
                     df_pie = df_ext_gen.groupby('TIPO').agg(
@@ -727,12 +728,27 @@ else:
                             theta=__import__('altair').Theta(field="Cantidad", type="quantitative"),
                             color=__import__('altair').Color(field="TIPO", type="nominal", legend=__import__('altair').Legend(title="Tipificación")),
                             tooltip=['TIPO', 'Cantidad', __import__('altair').Tooltip('Monto', format="$,.2f")]
-                        ).properties(height=280),
+                        ).properties(height=300),
                         use_container_width=True
                     )
+
                 with col_chart2:
-                    st.markdown("#### 📌 Resumen Rápido")
-                    st.dataframe(df_pie, use_container_width=True, hide_index=True)
+                    st.markdown("#### 🏆 Top 10 Puntos de Venta (Mayor Recaudo)")
+                    df_top = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP').agg(
+                        Recaudo=('VALOR_LIMPIO', 'sum')
+                    ).reset_index().nlargest(10, 'Recaudo')
+                    
+                    if len(df_top) > 0:
+                        st.altair_chart(
+                            __import__('altair').Chart(df_top).mark_bar(color='#C2185B').encode(
+                                x=__import__('altair').X('Recaudo:Q', title="Recaudo (COP)"),
+                                y=__import__('altair').Y('PDV_SAP:N', sort='-x', title="Punto de Venta"),
+                                tooltip=['PDV_SAP', __import__('altair').Tooltip('Recaudo', format="$,.2f")]
+                            ).properties(height=300),
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("No hay suficientes datos de PDV SAP identificados para mostrar el Top 10.")
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
