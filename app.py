@@ -9,117 +9,110 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🍦 Portal Contable POPSY")
-st.markdown("### Sistema Integrado de Gestión Contable y Financiera")
+# Estilo visual corporativo (Diseño Popsy Fucsia/Rosado)
+st.markdown("""
+    <style>
+    .main-header {
+        font-size: 2.5rem;
+        color: #B80049;
+        font-weight: 700;
+    }
+    .sub-header {
+        font-size: 1.2rem;
+        color: #555555;
+        font-style: italic;
+    }
+    .stButton>button {
+        background-color: #B80049;
+        color: white;
+        font-weight: bold;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: #900038;
+        color: white;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Encabezado principal con diseño corporativo
+st.markdown('<p class="main-header">🍦 Portal Contable POPSY</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>', unsafe_allow_html=True)
 st.markdown("---")
 
-# Cargar tabla de usuarios y permisos desde Excel
+# Cargar tabla de usuarios y permisos desde Excel de forma segura
 USER_EXCEL = "usuarios_permisos.xlsx"
 
+@st.cache_data
 def cargar_usuarios():
     if os.path.exists(USER_EXCEL):
-        return pd.read_excel(USER_EXCEL)
-    else:
-        # Respaldo por defecto en caso de no encontrar el Excel
-        return pd.DataFrame({
-            'correo': ['sandra.garcia@popsy.com.co'],
-            'nombre': ['Sandra García'],
-            'rol': ['Administrador'],
-            'estado': ['Activo']
-        })
+        try:
+            df = pd.read_excel(USER_EXCEL)
+            # Limpiar nombres de columnas por si tienen espacios ocultos
+            df.columns = df.columns.str.strip()
+            return df
+        except Exception as e:
+            st.error(f"Error al leer el archivo Excel de usuarios: {e}")
+            return pd.DataFrame()
+    return pd.DataFrame()
 
 df_usuarios = cargar_usuarios()
 
-# Estado de la sesión
-if "usuario_autenticado" not in st.session_state:
-    st.session_state.usuario_autenticado = False
-    st.session_state.datos_usuario = None
+# Control de sesión
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+if "correo_usuario" not in st.session_state:
+    st.session_state.correo_usuario = ""
 
-# ----------------------------------------------------
-# 1. PANTALLA DE INICIO DE SESIÓN
-# ----------------------------------------------------
-if not st.session_state.usuario_autenticado:
-    col_login, _ = st.columns([1, 1])
-    with col_login:
-        st.info("🔐 Ingresa tu correo corporativo para acceder a los módulos autorizados.")
+# Interfaz de Login
+if not st.session_state.autenticado:
+    st.markdown("### 🔐 Acceso al Sistema Corporativo")
+    st.info("Ingresa tu correo corporativo para acceder a los módulos autorizados (@heladospopsy.com).")
+    
+    with st.form("form_login"):
+        correo_ingresado = st.text_input("Correo corporativo (@heladospopsy.com):", placeholder="nombre.apellido@heladospopsy.com")
+        btn_ingresar = st.form_submit_button("Ingresar al Portal")
         
-        with st.form("login_form"):
-            correo_input = st.text_input("Correo corporativo:").strip().lower()
-            btn_ingresar = st.form_submit_button("Ingresar al Portal")
+        if btn_ingresar:
+            correo_limpio = correo_ingresado.strip().lower()
             
-            if btn_ingresar:
-                if correo_input:
-                    usuario_match = df_usuarios[
-                        (df_usuarios['correo'].str.strip().str.lower() == correo_input) & 
-                        (df_usuarios['estado'].str.strip().str.lower() == 'activo')
-                    ]
+            # Validar dominio corporativo
+            if not correo_limpio.endswith("@heladospopsy.com"):
+                st.error("⚠️ Acceso denegado. Debes utilizar una cuenta de correo corporativa válida (@heladospopsy.com).")
+            elif df_usuarios.empty:
+                st.error("⚠️ No se encontró la base de datos de usuarios o está vacía.")
+            else:
+                # Buscar columna de correo de forma flexible (buscando 'correo' o 'email')
+                col_correo = None
+                for col in df_usuarios.columns:
+                    if 'correo' in col.lower() or 'email' in col.lower():
+                        col_correo = col
+                        break
+                
+                if col_correo is None:
+                    st.error("⚠️ El archivo Excel no contiene una columna identificable de 'correo' o 'email'.")
+                else:
+                    # Normalizar los correos del Excel para la comparación
+                    correos_registrados = df_usuarios[col_correo].astype(str).str.strip().str.lower()
                     
-                    if not usuario_match.empty:
-                        st.session_state.usuario_autenticado = True
-                        st.session_state.datos_usuario = usuario_match.iloc[0].to_dict()
+                    if correo_limpio in correos_registrados.values:
+                        st.session_state.autenticado = True
+                        st.session_state.correo_usuario = correo_limpio
+                        st.success("¡Acceso exitoso! Cargando portal...")
                         st.rerun()
                     else:
-                        st.error("❌ Correo no registrado o inactivo. Contacta al administrador.")
-                else:
-                    st.warning("Por favor ingresa un correo válido.")
-
-# ----------------------------------------------------
-# 2. PANEL PRINCIPAL Y VISUALIZACIÓN DE MÓDULOS
-# ----------------------------------------------------
+                        st.error("⚠️ Este correo no cuenta con permisos registrados en el sistema.")
 else:
-    user = st.session_state.datos_usuario
-    rol_actual = user['rol']
+    # Pantalla principal una vez autenticado
+    st.success(f"Bienvenida al sistema, **{st.session_state.correo_usuario}**")
     
-    # Barra lateral de información
-    st.sidebar.markdown("### 👤 Perfil de Usuario")
-    st.sidebar.write(f"**Nombre:** {user['nombre']}")
-    st.sidebar.write(f"**Rol:** `{rol_actual}`")
-    st.sidebar.markdown("---")
-    
-    if st.sidebar.button("🔴 Cerrar Sesión"):
-        st.session_state.usuario_autenticado = False
-        st.session_state.datos_usuario = None
+    if st.button("Cerrar Sesión"):
+        st.session_state.autenticado = False
+        st.session_state.correo_usuario = ""
         st.rerun()
-
-    st.success(f"¡Bienvenido/a, **{user['nombre']}**!")
-    st.markdown("### 📌 Módulos Activos del Portal")
-    st.caption("A continuación se presentan los módulos disponibles. Navega desde la barra lateral izquierda hacia tus módulos autorizados.")
-
-    st.write("")
-
-    # Definición de Módulos
-    modulos = [
-        {
-            "titulo": "💵 Control de Efectivo",
-            "descripcion": "Conciliación bancaria y cuadre de cajas multi-sociedad (CO01 / CO02).",
-            "roles_permitidos": ["Administrador", "Contabilidad"]
-        },
-        {
-            "titulo": "🧾 Legalizaciones PDV",
-            "descripcion": "Recepción, auditoría y soporte de cajas menores y gastos de Puntos de Venta.",
-            "roles_permitidos": ["Administrador", "Contabilidad", "PDV"]
-        },
-        {
-            "titulo": "📊 Visualización de Ventas",
-            "descripcion": "Análisis contable, métricas e ingresos por tienda.",
-            "roles_permitidos": ["Administrador", "Contabilidad"]
-        }
-    ]
-
-    cols = st.columns(3)
-
-    for i, mod in enumerate(modulos):
-        with cols[i % 3]:
-            tiene_permiso = rol_actual in mod["roles_permitidos"]
-            
-            with st.container(border=True):
-                st.subheader(mod["titulo"])
-                st.write(mod["descripcion"])
-                st.markdown("---")
-                
-                if tiene_permiso:
-                    st.markdown("✅ **Acceso Autorizado**")
-                    st.info("👉 Disponible en el menú lateral.")
-                else:
-                    st.markdown("🔒 **Acceso Restringido**")
-                    st.caption(f"Disponible para roles: *{', '.join(mod['roles_permitidos'])}*")
+        
+    st.markdown("---")
+    st.markdown("### Módulos Disponibles")
+    st.markdown("Utiliza el menú lateral izquierdo para navegar entre los diferentes módulos de control efectivo, legalizaciones y visualización de ventas.")
