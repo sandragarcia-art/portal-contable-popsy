@@ -163,7 +163,7 @@ else:
     st.markdown(f"""
         <div class="hero-banner">
             <div class="badge-tag">🍦 CONTROL EFECTIVO, BANCOS & PLANOS • {fecha_actual}</div>
-            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico por Banco y Planos Multiusos SAP</h1>
+            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Cruce Bancario BUSCARV y Planos SAP</h1>
             <p class="hero-sub">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
         </div>
     """, unsafe_allow_html=True)
@@ -193,12 +193,14 @@ else:
         nombre_archivo_base = "base_control_efectivo.xlsx"
         nombre_archivo_matriz_dtf = "base_datafonos.xlsx"
         nombre_archivo_comercios = "Comercio Datafonos.xlsx"
+        nombre_archivo_cuentas_bancos = "Cuentas bancos.xlsx"
         maneja_qr = True
     elif "CO02" in sociedad_seleccionada:
         codigo_sociedad = "CO02"
         nombre_archivo_base = "base_datos_co02.xlsx"
         nombre_archivo_matriz_dtf = "base_datafonos_co02.xlsx"
         nombre_archivo_comercios = "Comercio Datafonos_co02.xlsx"
+        nombre_archivo_cuentas_bancos = "Cuentas bancos.xlsx"
         maneja_qr = False
     else:
         codigo_sociedad = None
@@ -580,6 +582,8 @@ else:
         st.error(f"⚠️ No se encontró el archivo '{nombre_archivo_matriz_dtf}' en la raíz del repositorio.")
     elif not os.path.exists(nombre_archivo_comercios):
         st.error(f"⚠️ No se encontró el archivo '{nombre_archivo_comercios}' en la raíz del repositorio.")
+    elif not os.path.exists(nombre_archivo_cuentas_bancos):
+        st.error(f"⚠️ No se encontró el archivo '{nombre_archivo_cuentas_bancos}' en la raíz del repositorio.")
     else:
         # Cargar bases de referencia específicas de la sociedad
         df_base_tiendas = pd.read_excel(nombre_archivo_base, sheet_name='Hoja1')
@@ -591,15 +595,14 @@ else:
             mapa_multicash[r['TEXTO_CLEAN']] = {
                 'cb_sap': r.get('CB SAP', ''),
                 'pdv_sap': r.get('PDV SAP', ''),
-                'tipificacion': r.get('TIPIFICACION', ''),
-                'banco': str(r.get('BANCO', r.get('ENTIDAD', 'BANCO PRINCIPAL'))).strip()
+                'tipificacion': r.get('TIPIFICACION', '')
             }
 
         # Cargar matriz de datáfonos específica de la sociedad
         df_matriz_dtf = pd.read_excel(nombre_archivo_matriz_dtf)
         df_matriz_dtf.columns = [str(c).strip().upper() for c in df_matriz_dtf.columns]
 
-        # Cargar maestro de comercios de datáfonos específico de la sociedad
+        # Cargar maestro de comercios de datáfonos
         df_comercios_dtf = pd.read_excel(nombre_archivo_comercios)
         df_comercios_dtf.columns = [str(c).strip().upper() for c in df_comercios_dtf.columns]
         
@@ -617,11 +620,26 @@ else:
                     'cb': r.get('CB', '')
                 }
 
+        # Cargar maestro de cuentas de bancos (BUSCARV)
+        df_cuentas_bancos = pd.read_excel(nombre_archivo_cuentas_bancos)
+        df_cuentas_bancos.columns = [str(c).strip().upper() for c in df_cuentas_bancos.columns]
+        
+        # Identificar columnas en la base de cuentas de bancos
+        col_cta_banco = next((c for c in df_cuentas_bancos.columns if 'cuenta' in c.lower() or 'numero' in c.lower() or 'cta' in c.lower()), df_cuentas_bancos.columns[0])
+        col_nom_banco = next((c for c in df_cuentas_bancos.columns if 'banco' in c.lower() or 'nombre' in c.lower() or 'entidad' in c.lower()), df_cuentas_bancos.columns[min(1, len(df_cuentas_bancos.columns)-1)])
+        
+        mapa_bancos_buscarv = {}
+        for _, r in df_cuentas_bancos.iterrows():
+            cta_val = str(r.get(col_cta_banco, '')).strip()
+            nom_val = str(r.get(col_nom_banco, '')).strip()
+            if cta_val:
+                mapa_bancos_buscarv[cta_val] = nom_val
+
         # ==========================================
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v26")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v27")
         
         if uploaded_multicash_gen:
             try:
@@ -632,7 +650,9 @@ else:
                     
                 df_ext_gen.columns = [str(c).strip().upper() for c in df_ext_gen.columns]
                 cols_lower = [str(c).lower() for c in df_ext_gen.columns]
+                
                 col_val_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
+                col_cta_ext = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'cta' in c or 'banco' in c), df_ext_gen.columns[1] if len(df_ext_gen.columns) > 1 else None)
                 
                 df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0) if col_val_gen else 0.0
                 col_ref_gen = df_ext_gen.columns[min(9, len(df_ext_gen.columns) - 1)]
@@ -641,17 +661,26 @@ else:
                     ref_text = str(row.get(col_ref_gen, '')).strip().upper()
                     if ref_text in mapa_multicash:
                         info = mapa_multicash[ref_text]
-                        return info['tipificacion'], info['pdv_sap'], info['cb_sap'], info['banco']
+                        return info['tipificacion'], info['pdv_sap'], info['cb_sap']
                     for k, info in mapa_multicash.items():
                         if k and k in ref_text:
-                            return info['tipificacion'], info['pdv_sap'], info['cb_sap'], info['banco']
-                    return 'POR IDENTIFICAR', '', '', 'OTRO BANCO / NO IDENTIFICADO'
+                            return info['tipificacion'], info['pdv_sap'], info['cb_sap']
+                    return 'POR IDENTIFICAR', '', ''
 
                 res_gen = df_ext_gen.apply(clasificar_gen, axis=1)
                 df_ext_gen['TIPO'] = [r[0] for r in res_gen]
                 df_ext_gen['PDV_SAP'] = [r[1] for r in res_gen]
                 df_ext_gen['CB_SAP'] = [r[2] for r in res_gen]
-                df_ext_gen['BANCO'] = [r[3] for r in res_gen]
+                
+                # --- BUSCARV AUTOMÁTICO CON LA BASE DE BANCOS ---
+                def aplicar_buscarv_banco(row):
+                    if col_cta_ext and col_cta_ext in row and pd.notna(row[col_cta_ext]):
+                        cta_str = str(row[col_cta_ext]).strip()
+                        if cta_str in mapa_bancos_buscarv:
+                            return mapa_bancos_buscarv[cta_str]
+                    return 'BANCO PRINCIPAL / OTRO'
+
+                df_ext_gen['BANCO'] = df_ext_gen.apply(aplicar_buscarv_banco, axis=1)
                 
                 tot_reg = len(df_ext_gen)
                 tot_monto = df_ext_gen['VALOR_LIMPIO'].sum()
@@ -716,8 +745,8 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DESGLOSE Y FILTRO POR BANCO ---
-                st.markdown("#### 🏦 Desglose de Recaudo por Entidad Bancaria")
+                # --- DESGLOSE Y FILTRO POR BANCO (VÍA BUSCARV) ---
+                st.markdown("#### 🏦 Desglose de Recaudo por Banco (Obtenido de 'Cuentas bancos.xlsx')")
                 df_bancos_sum = df_ext_gen.groupby('BANCO').agg(
                     Partidas=('VALOR_LIMPIO', 'count'),
                     Monto_Total=('VALOR_LIMPIO', 'sum')
@@ -813,6 +842,7 @@ else:
                     cols_lower = [str(c).lower() for c in df_c_raw.columns]
                     
                     col_val = next((df_c_raw.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
+                    col_cta_c = next((df_c_raw.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'cta' in c or 'banco' in c), df_c_raw.columns[1] if len(df_c_raw.columns) > 1 else None)
                     col_ref = df_c_raw.columns[min(9, len(df_c_raw.columns) - 1)]
                     
                     df_c_raw['VALOR_LIMPIO'] = pd.to_numeric(df_c_raw[col_val], errors='coerce').fillna(0) if col_val else 0.0
@@ -821,15 +851,23 @@ else:
                         ref_text = str(row.get(col_ref, '')).strip().upper()
                         if ref_text in mapa_multicash and mapa_multicash[ref_text]['tipificacion'] == 'Consignaciones':
                             info = mapa_multicash[ref_text]
-                            return 'SI', info['pdv_sap'], info['cb_sap'], info['banco']
-                        return 'NO', '', '', ''
+                            return 'SI', info['pdv_sap'], info['cb_sap']
+                        return 'NO', '', ''
 
                     res = df_c_raw.apply(filtrar_c, axis=1)
                     df_c_raw['ES_C'] = [r[0] for r in res]
                     df_c_raw['PDV_SAP'] = [r[1] for r in res]
                     df_c_raw['CB_SAP'] = [r[2] for r in res]
-                    df_c_raw['BANCO'] = [r[3] for r in res]
                     
+                    # BUSCARV PARA CONSIGNACIONES
+                    def buscarv_c_banco(row):
+                        if col_cta_c and col_cta_c in row and pd.notna(row[col_cta_c]):
+                            cta_str = str(row[col_cta_c]).strip()
+                            if cta_str in mapa_bancos_buscarv:
+                                return mapa_bancos_buscarv[cta_str]
+                        return 'BANCO PRINCIPAL / OTRO'
+
+                    df_c_raw['BANCO'] = df_c_raw.apply(buscarv_c_banco, axis=1)
                     df_c_filtrado = df_c_raw[df_c_raw['ES_C'] == 'SI']
                     
                     st.metric("Total Consignaciones Detectadas", f"{len(df_c_filtrado)} registros", f"${df_c_filtrado['VALOR_LIMPIO'].sum():,.2f}")
