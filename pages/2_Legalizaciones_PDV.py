@@ -1,7 +1,7 @@
 import streamlit as st
 
 st.set_page_config(
-    page_title="Control Efectivo - Portal Popsy",
+    page_title="Legalizaciones PDV - Portal Popsy",
     page_icon="🍦",
     layout="wide"
 )
@@ -32,11 +32,11 @@ if "autenticado" not in st.session_state or not st.session_state.autenticado:
 else:
     st.markdown("""
         <div class="popsy-header">
-            <div class="main-title">💵 Control Efectivo POPSY</div>
-            <p style="color: #666; font-style: italic; margin-bottom: 0;">Gestión y arqueos de efectivo por punto de venta</p>
+            <div class="main-title">📋 Legalizaciones PDV POPSY</div>
+            <p style="color: #666; font-style: italic; margin-bottom: 0;">Registro y control de gastos por punto de venta</p>
         </div>
     """, unsafe_allow_html=True)
     
     st.success(f"Sesión activa con: **{st.session_state.correo_usuario}**")
-    st.markdown("### Registro y Arqueos")
-    st.info("Módulo de control de efectivo cargado correctamente.")
+    st.markdown("### Gestión de Legalizaciones")
+    st.info("Módulo de legalizaciones cargado correctamente.")
