@@ -249,7 +249,7 @@ else:
 
     # --- INTERFAZ PRINCIPAL DE CONCILIACIÓN DE CAJAS ---
     st.markdown(f"### 💰 Conciliación y Arqueo de Cajas • {sociedad_seleccionada}")
-    st.markdown("Carga el archivo de control de cajas que incluye columnas de **Concepto** (Datáfonos, Consignaciones, Recíprocos, Ventas, etc.) y la **Fecha Control** para ejecutar la validación de soportes y el cálculo automático de faltantes y sobrantes.")
+    st.markdown("Carga el archivo de control de cajas (con columnas de **PDV**, **Concepto**, y **Fecha Control**) para realizar la validación y obtener el consolidado unificado por punto de venta.")
     
     archivo_cajas = st.file_uploader("Cargar Archivo de Cajas (Excel o CSV)", type=["xlsx", "csv"], key="cajas_page_uploader")
     
@@ -263,13 +263,14 @@ else:
             df_cajas.columns = [str(c).strip().upper() for c in df_cajas.columns]
             
             st.success("✅ Archivo de cajas cargado exitosamente.")
-            with st.expander("🔍 Ver vista previa de los datos"):
+            with st.expander("🔍 Ver vista previa de los datos crudos"):
                 st.dataframe(df_cajas.head(5), use_container_width=True)
             
-            if st.button("🚀 Ejecutar Análisis de Cajas y Diferencias"):
-                with st.spinner("Analizando conceptos, fecha control y diferencias..."):
+            if st.button("🚀 Ejecutar Análisis y Consolidado por PDV"):
+                with st.spinner("Procesando arqueos, unificando por PDV y calculando diferencias..."):
                     
-                    # Detección inteligente de columnas
+                    # Detección inteligente de columnas clave
+                    col_pdv = next((c for c in df_cajas.columns if 'PDV' in c or 'PUNTO' in c or 'TIENDA' in c or 'CENTRO' in c), df_cajas.columns[0])
                     col_val_sistema = next((c for c in df_cajas.columns if 'SISTEMA' in c or 'TEORICO' in c or 'BASE' in c or 'VALOR' in c), df_cajas.columns[min(2, len(df_cajas.columns)-1)])
                     col_val_fisico = next((c for c in df_cajas.columns if 'FISICO' in c or 'REAL' in c or 'CONTEO' in c or 'CONTADO' in c), df_cajas.columns[min(3, len(df_cajas.columns)-1)])
                     
@@ -277,7 +278,7 @@ else:
                     df_cajas['VAL_SISTEMA'] = pd.to_numeric(df_cajas[col_val_sistema].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0)
                     df_cajas['VAL_FISICO'] = pd.to_numeric(df_cajas[col_val_fisico].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0)
                     
-                    # Cálculo de diferencia (Faltantes / Sobrantes)
+                    # Cálculo de diferencia individual
                     df_cajas['DIFERENCIA'] = df_cajas['VAL_FISICO'] - df_cajas['VAL_SISTEMA']
                     
                     def clasificar_estado(row):
@@ -291,33 +292,55 @@ else:
                             
                     df_cajas['ESTADO_ARQUEO'] = df_cajas.apply(clasificar_estado, axis=1)
                     
-                    total_registros = len(df_cajas)
-                    total_sobrantes = len(df_cajas[df_cajas['ESTADO_ARQUEO'] == "SOBRANTE"])
-                    total_faltantes = len(df_cajas[df_cajas['ESTADO_ARQUEO'] == "FALTANTE"])
-                    total_cuadrados = len(df_cajas[df_cajas['ESTADO_ARQUEO'] == "CUADRADO (OK)"])
-                    monto_neto_dif = df_cajas['DIFERENCIA'].sum()
+                    # --- UNIFICACIÓN / CONSOLIDADO POR PDV ---
+                    df_pdv_resumen = df_cajas.groupby(col_pdv).agg(
+                        Total_Registros=('VAL_SISTEMA', 'count'),
+                        Total_Sistema=('VAL_SISTEMA', 'sum'),
+                        Total_Fisico=('VAL_FISICO', 'sum'),
+                        Diferencia_Neta=('DIFERENCIA', 'sum')
+                    ).reset_index()
                     
-                    st.markdown("### 📊 Resultados del Análisis de Cajas")
-                    mc1, mc2, mc3, mc4 = st.columns(4)
-                    mc1.metric(label="Total Partidas Analizadas", value=f"{total_registros} registros")
-                    mc2.metric(label="Cajas Cuadradas", value=f"{total_cuadrados} partidas", delta="Sin diferencia")
-                    mc3.metric(label="Sobrantes", value=f"{total_sobrantes} partidas", delta="Revisar", delta_color="normal")
-                    mc4.metric(label="Faltantes", value=f"{total_faltantes} partidas", delta="Alerta", delta_color="inverse")
+                    def estado_pdv(row):
+                        dif = row['Diferencia_Neta']
+                        if abs(dif) < 1:
+                            return "CUADRADO (OK)"
+                        elif dif > 0:
+                            return "SOBRANTE NETO"
+                        else:
+                            return "FALTANTE NETO"
+                            
+                    df_pdv_resumen['ESTADO_PDV'] = df_pdv_resumen.apply(estado_pdv, axis=1)
                     
-                    st.info(f"💵 **Diferencia Neta Global:** ${monto_neto_dif:,.2f}")
+                    total_pdvs = len(df_pdv_resumen)
+                    monto_neto_global = df_cajas['DIFERENCIA'].sum()
                     
-                    st.markdown("#### 📋 Detalle de Arqueos, Conceptos y Fecha Control")
-                    st.dataframe(df_cajas, use_container_width=True)
+                    st.markdown("### 📊 Resultados Generales")
+                    mc1, mc2, mc3 = st.columns(3)
+                    mc1.metric(label="Total PDV Analizados", value=f"{total_pdvs} tiendas")
+                    mc2.metric(label="Total Registros Procesados", value=f"{len(df_cajas)} partidas")
+                    mc3.metric(label="Diferencia Neta Global", value=f"${monto_neto_global:,.2f}", delta="Balance general", delta_color="off")
                     
-                    # Exportar informe en Excel
+                    # Pestañas para ver el Consolidado por PDV y el Detalle Completo
+                    tab_pdv, tab_detalle = st.tabs(["🏢 Consolidado Unificado por PDV", "📋 Detalle Completo de Cajas"])
+                    
+                    with tab_pdv:
+                        st.markdown(f"#### Resumen Unificado por {col_pdv}")
+                        st.dataframe(df_pdv_resumen, use_container_width=True)
+                        
+                    with tab_detalle:
+                        st.markdown("#### Detalle de Arqueos, Conceptos y Fecha Control")
+                        st.dataframe(df_cajas, use_container_width=True)
+                    
+                    # Exportar informe en Excel con múltiples pestañas estilizadas
                     output_cajas = io.BytesIO()
                     with pd.ExcelWriter(output_cajas, engine='openpyxl') as writer:
                         pd.DataFrame({
-                            "Métrica Caja": ["Sociedad", "Fecha Proceso", "Total Registros", "Cuadrados", "Sobrantes", "Faltantes", "Diferencia Neta Total"],
-                            "Valor": [codigo_sociedad, datetime.now().strftime('%Y-%m-%d %H:%M'), total_registros, total_cuadrados, total_sobrantes, total_faltantes, monto_neto_dif]
+                            "Métrica Caja": ["Sociedad", "Fecha Proceso", "Total PDV Evaluados", "Total Partidas", "Diferencia Neta Total"],
+                            "Valor": [codigo_sociedad, datetime.now().strftime('%Y-%m-%d %H:%M'), total_pdvs, len(df_cajas), monto_neto_global]
                         }).to_excel(writer, sheet_name='Resumen_Cajas', index=False, startrow=1)
                         
-                        df_cajas.to_excel(writer, sheet_name='Detalle_Conciliacion_Cajas', index=False)
+                        df_pdv_resumen.to_excel(writer, sheet_name='Consolidado_Por_PDV', index=False)
+                        df_cajas.to_excel(writer, sheet_name='Detalle_Completo', index=False)
                         
                     output_cajas.seek(0)
                     wb_c = openpyxl.load_workbook(output_cajas)
@@ -329,13 +352,13 @@ else:
                     
                     st.markdown("---")
                     st.download_button(
-                        label="📥 Descargar Informe de Conciliación de Cajas Estilizado (.xlsx)",
+                        label="📥 Descargar Informe Completo y Consolidado por PDV (.xlsx)",
                         data=final_output_cajas,
-                        file_name=f"Informe_Conciliacion_Cajas_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        file_name=f"Informe_Consolidado_Cajas_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                     
         except Exception as e:
             st.error(f"Error procesando el archivo de cajas: {e}")
     else:
-        st.info("📌 Por favor carga el archivo de control de cajas para iniciar el análisis con conceptos y fecha control.")
+        st.info("📌 Por favor carga el archivo de control de cajas para generar el unificado por punto de venta.")
