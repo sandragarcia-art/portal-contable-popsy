@@ -1,7 +1,11 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 from datetime import datetime
 import os
+import io
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -480,6 +484,100 @@ else:
             
         return pd.DataFrame(filas)[columnas_multiusos]
 
+    def generar_plano_multiusos_payments_way(df_filtrado, df_matriz_dtf, codigo_sociedad):
+        columnas_multiusos = [
+            'ID', 'USUARIO', 'LEDGER', 'FECHA DOC', 'CLASE DOCUMENTO', 'SOCIEDAD', 'FECHA CONT',
+            'FECHA REG', 'MONEDA TR', 'TASA DE CAMBIO', 'REFERENCIA', 'TEXTO CABECERA',
+            'IDENTIFICADOR PI', 'POSICION', 'CLAVE CONTABILIZACION', 'CUENTA DE MAYOR',
+            'CLASE DE CUENTA', 'PROVEEDOR', 'CLIENTE', 'PAGADOR ALTERNATIVO', 'INDICADOR CME',
+            'VALOR TR', 'IND IVA', 'CALCULAR IMP. AUTOMATICO', 'FECHA BASE', 'CONDICION PAGO',
+            'FECHA VALOR', 'Orden de Compra', 'Posicion OC', 'ORDEN', 'CECO', 'CEBE', 'GRAFO',
+            'OPERACION GRAFO', 'ELEMENTO PEP', 'ASIGNACION', 'CLAVE DE REF_1', 'CLAVE DE REF_2',
+            'CLAVE DE REF_3', 'TEXTO POSICION', 'INDICADOR TP. RETENCIONES 1', 'INDICADOR RETENCION  1',
+            'BASE RETENCION 1', 'BASE RETENCION DOC 1', 'INDICADOR TP. RETENCIONES 2', 'INDICADOR RETENCION  2',
+            'BASE RETENCION 2', 'BASE RETENCION DOC 2', 'INDICADOR TP. RETENCIONES 3', 'INDICADOR RETENCION  3',
+            'BASE RETENCION 3', 'BASE RETENCION DOC 3', 'INDICADOR TP. RETENCIONES 4', 'INDICADOR RETENCION  4',
+            'BASE RETENCION 4', 'BASE RETENCION DOC4', 'INDICADOR TP. RETENCIONES 5', 'INDICADOR RETENCION  5',
+            'BASE RETENCION 5', 'BASE RETENCION DOC 5', 'AÑO', 'MES', 'MONEDA', 'OBJETO COSTO',
+            'CLASE DE ACTIVIDAD', 'POSICION DE LA ORDEN', 'HOJA DE RUTA', 'SEGMENTO', 'PRODUCTO',
+            'OF VENTAS', 'CLIENTE CAR', 'CLASE MEDIO DE TRANSPORTE', 'ZONA', 'MEDIO DE TRANSPORTE',
+            'GRUPO MATERIAL 1', 'GRUPO MATERIAL 2', 'GRUPO MATERIAL 3', 'GRUPO MATERIAL 4',
+            'VALOR LC', 'FECHA RFERENCIA PAGO', 'DOCUMENTO REFERENCIA', 'FECHA REFERENCIA', 'BLOQUEO PAGO'
+        ]
+        
+        filas = []
+        fecha_hoy = datetime.now().strftime('%d.%m.%Y')
+        nit_corporativo = "8600538311"
+        
+        mapa_columnas_vlr = {
+            'Vlr Abono': 'VALOR TOTAL',
+            'Vlr Comision': 'VALOR COMISION',
+            'Vlr Total': 'VALOR TOTAL',
+            'Vlr Rete Fuente': 'VALOR RETE FUENTE',
+            'Vlr Rete Ica': 'VALOR RETE ICA',
+            'Vlr Rete Iva': 'VALOR RETE IVA'
+        }
+
+        for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
+            comercio_val = str(row.get('REFERENCIA', row.get('COMERCIO', idx))).strip()
+            
+            fecha_doc = fecha_hoy
+            val_fec = row.get('FECHA', row.get('FECHA DE PAGO', None))
+            if pd.notna(val_fec):
+                try:
+                    fec_str = str(val_fec).strip()
+                    parsed = pd.to_datetime(fec_str, errors='coerce')
+                    if pd.notna(parsed):
+                        fecha_doc = parsed.strftime('%d.%m.%Y')
+                except:
+                    pass
+
+            pdv_val = str(row.get('PDV_SAP', ''))
+            cebe_val = str(row.get('CB', ''))
+            
+            filas_matriz = df_matriz_dtf[df_matriz_dtf['TRN'] == 6]
+            if len(filas_matriz) == 0:
+                filas_matriz = df_matriz_dtf
+            
+            pos_efectiva = 1
+            for _, m_row in filas_matriz.iterrows():
+                tipo_cta = str(m_row['TIPO CUENTA']).strip()
+                cuenta_sap = int(m_row['CUENTA SAP'])
+                cc_sap = int(m_row['CC SAP'])
+                
+                col_plano = None
+                for k, v in mapa_columnas_vlr.items():
+                    if k.lower() in tipo_cta.lower():
+                        col_plano = v
+                        break
+                if not col_plano:
+                    col_plano = 'VALOR TOTAL' if 'total' in tipo_cta.lower() else 'VALOR COMISION'
+                
+                val_raw = row.get(col_plano, 0) if col_plano in row else 0
+                try:
+                    valor_val = int(round(abs(float(val_raw))))
+                except:
+                    valor_val = 0
+                
+                if valor_val == 0:
+                    continue
+                
+                texto_pos = f"{fecha_doc} PW {pdv_val}"
+                
+                p = {c: None for c in columnas_multiusos}
+                p.update({
+                    'ID': idx, 'FECHA DOC': fecha_doc, 'CLASE DOCUMENTO': 'SB', 'SOCIEDAD': codigo_sociedad,
+                    'FECHA CONT': fecha_doc, 'FECHA REG': fecha_doc, 'MONEDA TR': 'COP',
+                    'REFERENCIA': comercio_val, 'TEXTO CABECERA': f"PAYMENTS WAY",
+                    'IDENTIFICADOR PI': idx, 'POSICION': pos_efectiva, 'CLAVE CONTABILIZACION': cc_sap,
+                    'CUENTA DE MAYOR': cuenta_sap, 'VALOR TR': valor_val, 'CEBE': cebe_val,
+                    'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_pos
+                })
+                filas.append(p)
+                pos_efectiva += 1
+            
+        return pd.DataFrame(filas)[columnas_multiusos]
+
     # --- VERIFICACIÓN DE ARCHIVOS MAESTROS ---
     if codigo_sociedad is None:
         st.warning(f"🚧 La sociedad **{sociedad_seleccionada}** se encuentra en proceso de implementación.")
@@ -529,7 +627,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v19")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v21")
         
         if uploaded_multicash_gen:
             try:
@@ -620,6 +718,48 @@ else:
                             <div class="metric-sub" style="color: #DC2626;">${df_p_gen['VALOR_LIMPIO'].sum():,.2f}</div>
                         </div>
                     """, unsafe_allow_html=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # --- DASHBOARD VISUAL (GRÁFICOS INTEGRADOS) ---
+                col_chart1, col_chart2 = st.columns(2)
+                
+                with col_chart1:
+                    st.markdown("##### 🍕 Distribución Porcentual por Canal de Pago")
+                    resumen_tipos = df_ext_gen.groupby('TIPO')['VALOR_LIMPIO'].sum()
+                    fig1, ax1 = plt.subplots(figsize=(6, 4))
+                    colors = ['#C2185B', '#10B981', '#F59E0B', '#EF4444', '#6366F1']
+                    ax1.pie(resumen_tipos.values, labels=resumen_tipos.index, autopct='%1.1f%%', startangle=140, colors=colors[:len(resumen_tipos)])
+                    ax1.axis('equal')
+                    st.pyplot(fig1)
+
+                with col_chart2:
+                    st.markdown("##### 🏆 Top 10 Puntos de Venta (PDV SAP)")
+                    df_pdv_sum = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP')['VALOR_LIMPIO'].sum().nlargest(10).reset_index()
+                    if not df_pdv_sum.empty:
+                        fig2, ax2 = plt.subplots(figsize=(7, 4))
+                        sns.barplot(data=df_pdv_sum, y='PDV_SAP', x='VALOR_LIMPIO', palette='magma', ax=ax2)
+                        ax2.set_title("Recaudo Acumulado ($)", fontsize=10)
+                        ax2.set_xlabel("")
+                        ax2.set_ylabel("")
+                        st.pyplot(fig2)
+                    else:
+                        st.info("No hay datos de PDV homologados para graficar.")
+
+                # --- GESTIÓN DE EXCEPCIONES: POR IDENTIFICAR ---
+                if len(df_p_gen) > 0:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("#### ⚠️ Partidas Por Identificar (Requieren Revisión Auditada)")
+                    st.dataframe(df_p_gen, use_container_width=True)
+                    
+                    csv_pi = df_p_gen.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    st.download_button(
+                        label="📥 Exportar Partidas Por Identificar (.csv)",
+                        data=csv_pi,
+                        file_name=f"Partidas_Por_Identificar_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv",
+                        key="btn_dl_pi"
+                    )
                     
             except Exception as e:
                 st.error(f"Error procesando resumen general: {e}")
@@ -634,13 +774,13 @@ else:
                 "🏦 1. Consignaciones", 
                 "💳 2. Datáfonos", 
                 "📱 3. Códigos QR",
-                "🚀 4. Payments Way (Próximamente)"
+                "🚀 4. Payments Way"
             ])
         else:
             tab_cons, tab_dtf, tab_pw = st.tabs([
                 "🏦 1. Consignaciones", 
                 "💳 2. Datáfonos",
-                "🚀 4. Payments Way (Próximamente)"
+                "🚀 4. Payments Way"
             ])
             tab_qr = None
 
@@ -682,19 +822,52 @@ else:
                     st.metric("Total Consignaciones Detectadas", f"{len(df_c_filtrado)} registros", f"${df_c_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
+                    # FILTRO INTERACTIVO DE BÚSQUEDA
+                    filtro_pdv_c = st.text_input("🔍 Filtrar por PDV / Tienda o Referencia en pantalla:", "", key="f_c")
+                    if filtro_pdv_c:
+                        df_c_view = df_c_filtrado[df_c_filtrado['PDV_SAP'].astype(str).str.contains(filtro_pdv_c, case=False) | df_c_filtrado[col_ref].astype(str).str.contains(filtro_pdv_c, case=False)]
+                    else:
+                        df_c_view = df_c_filtrado
+
                     plano_c = generar_plano_multiusos_consignaciones(df_c_filtrado, codigo_sociedad)
-                    csv_c = plano_c.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
                     
-                    st.download_button(
-                        label="📥 Descargar Plano Multiusos SAP - Consignaciones (.csv)",
-                        data=csv_c,
-                        file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv",
-                        key="btn_dl_cons_final_csv",
-                        use_container_width=True
-                    )
+                    # AUDITORÍA DE BALANCE CONTABLE
+                    tot_deb = plano_c[plano_c['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
+                    tot_cred = plano_c[plano_c['CLAVE CONTABILIZACION'] == 50]['VALOR TR'].sum()
+                    
+                    st.markdown("#### ⚖️ Auditoría de Balance Contable SAP")
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Total Débitos (Clave 40)", f"${tot_deb:,.2f}")
+                    m2.metric("Total Créditos (Clave 50)", f"${tot_cred:,.2f}")
+                    m3.metric("Diferencia / Cuadre", f"${abs(tot_deb - tot_cred):,.2f}", delta="OK Cuadrado" if tot_deb == tot_cred else "Descuadrado", delta_color="normal")
+
                     st.markdown("<br>", unsafe_allow_html=True)
-                    st.dataframe(df_c_filtrado, use_container_width=True)
+                    col_d1, col_d2 = st.columns(2)
+                    
+                    csv_c = plano_c.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    txt_c = plano_c.to_csv(index=False, sep='|', encoding='utf-8-sig').encode('utf-8-sig')
+                    
+                    with col_d1:
+                        st.download_button(
+                            label="📥 Descargar Plano SAP (.csv)",
+                            data=csv_c,
+                            file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="btn_dl_cons_csv",
+                            use_container_width=True
+                        )
+                    with col_d2:
+                        st.download_button(
+                            label="📄 Descargar Plano SAP Delimitado (.txt)",
+                            data=txt_c,
+                            file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                            mime="text/plain",
+                            key="btn_dl_cons_txt",
+                            use_container_width=True
+                        )
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.dataframe(df_c_view, use_container_width=True)
                 except Exception as e:
                     st.error(f"Error procesando consignaciones: {e}")
 
@@ -741,29 +914,58 @@ else:
                             <div style="background-color: #F8D7DA; color: #721C24; padding: 15px; border-radius: 10px; border-left: 6px solid #F5C6CB; margin-bottom: 20px;">
                                 <b>⚠️ Alerta de Homologación:</b> Se detectaron <b>{len(df_no_homologados)}</b> registros cuyos comercios no están en el archivo maestro <code>{nombre_archivo_comercios}</code>.<br>
                                 <br><b>Comercios faltantes:</b> {lista_advertencia}<br>
-                                <i>Por favor agrégalos a tu archivo maestro en GitHub para que queden mapeados correctamente.</i>
                             </div>
                         """, unsafe_allow_html=True)
 
                     st.metric("Total Transacciones Datáfonos", f"{len(df_d_raw)} registros", f"${df_d_raw['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    with st.spinner(f"Generando el Plano Multiusos SAP de Datáfonos para {sociedad_seleccionada}... Por favor espera ⏳"):
-                        plano_d = generar_plano_multiusos_datafonos(df_d_raw, df_matriz_dtf, codigo_sociedad)
-                        csv_d = plano_d.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    # FILTRO INTERACTIVO
+                    filtro_pdv_d = st.text_input("🔍 Filtrar por PDV / Tienda o Comercio:", "", key="f_d")
+                    if filtro_pdv_d:
+                        df_d_view = df_d_raw[df_d_raw['PDV_SAP'].astype(str).str.contains(filtro_pdv_d, case=False) | df_d_raw['COMERCIO'].astype(str).str.contains(filtro_pdv_d, case=False)]
+                    else:
+                        df_d_view = df_d_raw
+
+                    plano_d = generar_plano_multiusos_datafonos(df_d_raw, df_matriz_dtf, codigo_sociedad)
                     
-                    st.success(f"¡Plano generado con éxito! Total de posiciones contables válidas creadas: {len(plano_d):,}")
+                    # AUDITORÍA DE BALANCE CONTABLE
+                    tot_deb = plano_d[plano_d['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
+                    tot_cred = plano_d[plano_d['CLAVE CONTABILIZACION'] == 50]['VALOR TR'].sum()
                     
-                    st.download_button(
-                        label="📥 Descargar Plano Multiusos SAP - Datáfonos (.csv)",
-                        data=csv_d,
-                        file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv",
-                        key="btn_dl_dtf_final_csv",
-                        use_container_width=True
-                    )
+                    st.markdown("#### ⚖️ Auditoría de Balance Contable SAP")
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Total Débitos (Clave 40)", f"${tot_deb:,.2f}")
+                    m2.metric("Total Créditos (Clave 50)", f"${tot_cred:,.2f}")
+                    m3.metric("Diferencia / Cuadre", f"${abs(tot_deb - tot_cred):,.2f}", delta="OK Cuadrado" if tot_deb == tot_cred else "Descuadrado", delta_color="normal")
+
                     st.markdown("<br>", unsafe_allow_html=True)
-                    st.dataframe(df_d_raw, use_container_width=True)
+                    col_d1, col_d2 = st.columns(2)
+                    
+                    csv_d = plano_d.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    txt_d = plano_d.to_csv(index=False, sep='|', encoding='utf-8-sig').encode('utf-8-sig')
+                    
+                    with col_d1:
+                        st.download_button(
+                            label="📥 Descargar Plano SAP (.csv)",
+                            data=csv_d,
+                            file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="btn_dl_dtf_csv",
+                            use_container_width=True
+                        )
+                    with col_d2:
+                        st.download_button(
+                            label="📄 Descargar Plano SAP Delimitado (.txt)",
+                            data=txt_d,
+                            file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                            mime="text/plain",
+                            key="btn_dl_dtf_txt",
+                            use_container_width=True
+                        )
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.dataframe(df_d_view, use_container_width=True)
                 except Exception as e:
                     st.error(f"Error procesando datáfonos: {e}")
 
@@ -814,37 +1016,134 @@ else:
                         st.metric("Total Transacciones QR", f"{len(df_q_raw)} registros", f"${df_q_raw['VALOR_LIMPIO'].sum():,.2f}")
                         st.markdown("<br>", unsafe_allow_html=True)
                         
-                        with st.spinner("Generando el Plano Multiusos SAP de Códigos QR con matriz contable (Fecha de Consumo)... Por favor espera ⏳"):
-                            plano_q = generar_plano_multiusos_qr(df_q_raw, df_matriz_dtf, codigo_sociedad)
-                            csv_q = plano_q.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                        # FILTRO INTERACTIVO
+                        filtro_pdv_q = st.text_input("🔍 Filtrar por PDV / Tienda o Código Único:", "", key="f_q")
+                        if filtro_pdv_q:
+                            df_q_view = df_q_raw[df_q_raw['PDV_SAP'].astype(str).str.contains(filtro_pdv_q, case=False) | df_q_raw['CODIGO UNICO'].astype(str).str.contains(filtro_pdv_q, case=False)]
+                        else:
+                            df_q_view = df_q_raw
+
+                        plano_q = generar_plano_multiusos_qr(df_q_raw, df_matriz_dtf, codigo_sociedad)
                         
-                        st.success(f"¡Plano QR generado con éxito! Total de posiciones contables creadas: {len(plano_q):,}")
+                        # AUDITORÍA DE BALANCE CONTABLE
+                        tot_deb = plano_q[plano_q['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
+                        tot_cred = plano_q[plano_q['CLAVE CONTABILIZACION'] == 50]['VALOR TR'].sum()
                         
-                        st.download_button(
-                            label="📥 Descargar Plano Multiusos SAP - Códigos QR (.csv)",
-                            data=csv_q,
-                            file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                            mime="text/csv",
-                            key="btn_dl_qr_final_csv",
-                            use_container_width=True
-                        )
+                        st.markdown("#### ⚖️ Auditoría de Balance Contable SAP")
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("Total Débitos (Clave 40)", f"${tot_deb:,.2f}")
+                        m2.metric("Total Créditos (Clave 50)", f"${tot_cred:,.2f}")
+                        m3.metric("Diferencia / Cuadre", f"${abs(tot_deb - tot_cred):,.2f}", delta="OK Cuadrado" if tot_deb == tot_cred else "Descuadrado", delta_color="normal")
+
                         st.markdown("<br>", unsafe_allow_html=True)
-                        st.dataframe(df_q_raw, use_container_width=True)
+                        col_q1, col_q2 = st.columns(2)
+                        
+                        csv_q = plano_q.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                        txt_q = plano_q.to_csv(index=False, sep='|', encoding='utf-8-sig').encode('utf-8-sig')
+                        
+                        with col_q1:
+                            st.download_button(
+                                label="📥 Descargar Plano SAP (.csv)",
+                                data=csv_q,
+                                file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv",
+                                key="btn_dl_qr_csv",
+                                use_container_width=True
+                            )
+                        with col_q2:
+                            st.download_button(
+                                label="📄 Descargar Plano SAP Delimitado (.txt)",
+                                data=txt_q,
+                                file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                                mime="text/plain",
+                                key="btn_dl_qr_txt",
+                                use_container_width=True
+                            )
+
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.dataframe(df_q_view, use_container_width=True)
                     except Exception as e:
                         st.error(f"Error procesando códigos QR: {e}")
 
-        # --- MÓDULO 4: PAYMENTS WAY (PRÓXIMAMENTE) ---
+        # --- MÓDULO 4: PAYMENTS WAY ---
         with tab_pw:
             st.markdown(f"### 🚀 Módulo Payments Way • {sociedad_seleccionada}")
-            st.markdown("""
-                <div style="background: linear-gradient(135deg, #FFF5F7 0%, #FFE4E6 100%); border: 1px solid #FDA4AF; padding: 30px; border-radius: 16px; text-align: center; margin-top: 20px; box-shadow: 0 4px 12px rgba(194, 24, 91, 0.08);">
-                    <div style="font-size: 48px; margin-bottom: 10px;">🚀💳</div>
-                    <h2 style="color: #9F1239; margin-top: 0; font-weight: 800;">Módulo Payments Way - Próximamente</h2>
-                    <p style="font-size: 1.1rem; color: #4B5563; max-width: 700px; margin: 0 auto 20px auto;">
-                        Este módulo se encuentra en fase de diseño conceptual e integración próxima. Pronto podrás cargar los extractos y archivos planos de <b>Payments Way</b> para generar de manera automatizada su respectivo Plano Multiusos SAP, con homologación de comercios, control de comisiones, retenciones y validaciones contables.
-                    </p>
-                    <div style="display: inline-block; background-color: #C2185B; color: white; padding: 10px 24px; border-radius: 30px; font-weight: 700; font-size: 14px;">
-                        🚧 En Desarrollo • Lanzamiento Próximo
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown("Sube el **Archivo de Transacciones de Payments Way** para procesarlo con la matriz contable y generar automáticamente el Plano Multiusos SAP.")
+            
+            uploaded_pw = st.file_uploader("Sube el Archivo de Payments Way", type=["xlsx", "XLSX", "xls", "csv"], key="up_pw_final")
+            
+            if uploaded_pw:
+                try:
+                    if uploaded_pw.name.lower().endswith(('.xlsx', '.xls')):
+                        df_pw_raw = pd.read_excel(uploaded_pw)
+                    else:
+                        df_pw_raw = pd.read_csv(uploaded_pw, encoding='latin1')
+                        
+                    df_pw_raw.columns = [str(c).strip().upper() for c in df_pw_raw.columns]
+                    cols_lower = [str(c).lower() for c in df_pw_raw.columns]
+                    
+                    col_val_pw = next((df_pw_raw.columns[i] for i, c in enumerate(cols_lower) if 'total' in c or 'valor' in c or 'monto' in c), None)
+                    df_pw_raw['VALOR_LIMPIO'] = pd.to_numeric(df_pw_raw[col_val_pw], errors='coerce').fillna(0) if col_val_pw else 0.0
+                    
+                    def mapear_comercio_pw(row):
+                        comercio = str(row.get('COMERCIO', row.get('REFERENCIA', ''))).strip()
+                        if comercio in mapa_comercios:
+                            info = mapa_comercios[comercio]
+                            return info['pdv_sap'], info['cb']
+                        return '', ''
+
+                    res_pw = df_pw_raw.apply(mapear_comercio_pw, axis=1)
+                    df_pw_raw['PDV_SAP'] = [r[0] for r in res_pw]
+                    df_pw_raw['CB'] = [r[1] for r in res_pw]
+
+                    st.metric("Total Transacciones Payments Way", f"{len(df_pw_raw)} registros", f"${df_pw_raw['VALOR_LIMPIO'].sum():,.2f}")
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # FILTRO INTERACTIVO
+                    filtro_pdv_pw = st.text_input("🔍 Filtrar por PDV / Tienda o Comercio:", "", key="f_pw")
+                    if filtro_pdv_pw:
+                        df_pw_view = df_pw_raw[df_pw_raw['PDV_SAP'].astype(str).str.contains(filtro_pdv_pw, case=False)]
+                    else:
+                        df_pw_view = df_pw_raw
+
+                    plano_pw = generar_plano_multiusos_payments_way(df_pw_raw, df_matriz_dtf, codigo_sociedad)
+                    
+                    # AUDITORÍA DE BALANCE CONTABLE
+                    tot_deb = plano_pw[plano_pw['CLAVE CONTABILIZACION'] == 40]['VALOR TR'].sum()
+                    tot_cred = plano_pw[plano_pw['CLAVE CONTABILIZACION'] == 50]['VALOR TR'].sum()
+                    
+                    st.markdown("#### ⚖️ Auditoría de Balance Contable SAP")
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Total Débitos (Clave 40)", f"${tot_deb:,.2f}")
+                    m2.metric("Total Créditos (Clave 50)", f"${tot_cred:,.2f}")
+                    m3.metric("Diferencia / Cuadre", f"${abs(tot_deb - tot_cred):,.2f}", delta="OK Cuadrado" if tot_deb == tot_cred else "Descuadrado", delta_color="normal")
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    col_p1, col_p2 = st.columns(2)
+                    
+                    csv_pw = plano_pw.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    txt_pw = plano_pw.to_csv(index=False, sep='|', encoding='utf-8-sig').encode('utf-8-sig')
+                    
+                    with col_p1:
+                        st.download_button(
+                            label="📥 Descargar Plano SAP (.csv)",
+                            data=csv_pw,
+                            file_name=f"Multiusos_PaymentsWay_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="btn_dl_pw_csv",
+                            use_container_width=True
+                        )
+                    with col_p2:
+                        st.download_button(
+                            label="📄 Descargar Plano SAP Delimitado (.txt)",
+                            data=txt_pw,
+                            file_name=f"Multiusos_PaymentsWay_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                            mime="text/plain",
+                            key="btn_dl_pw_txt",
+                            use_container_width=True
+                        )
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.dataframe(df_pw_view, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error procesando Payments Way: {e}")
