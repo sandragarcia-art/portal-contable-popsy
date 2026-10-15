@@ -281,7 +281,7 @@ else:
             
         df_hist.to_excel(archivo_historial, index=False)
 
-    def generar_multiusos(df_conciliados, columna_clave_extracto, df_base, columna_clave_base, df_cuentas, codigo_sociedad):
+    def generar_multiusos(df_conciliados, columna_clave_extracto, df_base, columna_clave_base, codigo_sociedad):
         columnas_multiusos = [
             'ID', 'USUARIO', 'LEDGER', 'FECHA DOC', 'CLASE DOCUMENTO', 'SOCIEDAD', 'FECHA CONT',
             'FECHA REG', 'MONEDA TR', 'TASA DE CAMBIO', 'REFERENCIA', 'TEXTO CABECERA',
@@ -316,25 +316,15 @@ else:
                     'pdv_sap': str(r.get(col_pdv_sap, '')) if col_pdv_sap else ''
                 }
 
-        # Mapeo dinámico de cuentas de bancos desde la hoja Cuentas_Bancos
-        df_cuentas.columns = [str(c).strip().upper() for c in df_cuentas.columns]
-        col_sap = next((c for c in df_cuentas.columns if 'SAP' in c or 'CUENTA SAP' in c), df_cuentas.columns[min(1, len(df_cuentas.columns)-1)])
-        col_cta_maestro = next((c for c in df_cuentas.columns if 'CUENTA' in c or 'BANCO' in c or 'DESCRIPCION' in c), df_cuentas.columns[0])
-        
-        mapa_cuentas = {}
-        for _, r in df_cuentas.iterrows():
-            key = str(r.get(col_cta_maestro)).strip().upper()
-            val_sap = str(r.get(col_sap)).strip().split('.')[0]
-            if key and val_sap:
-                mapa_cuentas[key] = val_sap
-
         filas = []
         fecha_hoy = datetime.now().strftime('%d.%m.%Y')
         
         cols_lower = [str(c).lower() for c in df_conciliados.columns]
         col_valor_name = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c), df_conciliados.columns[min(5, len(df_conciliados.columns)-1)])
-        col_cuenta_ext = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'banco' in c or 'descripcion' in c), None)
         col_fecha_ext = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'fecha' in c), None)
+        
+        # Columna B del extracto (índice 1) para la Cuenta de Mayor
+        col_cuenta_mayor_extracto = df_conciliados.columns[1] if len(df_conciliados.columns) > 1 else df_conciliados.columns[0]
 
         cuenta_caja_default = '11050502'
         nit_corporativo = "8600538311"
@@ -371,14 +361,9 @@ else:
                 
             texto_posicion = f"{fecha_doc_val} CG {pdv_val}"
             
-            # Asignación dinámica de la cuenta de mayor SAP según el banco correspondiente
-            cuenta_sap_asignada = "11100511"
-            if col_cuenta_ext:
-                val_cta_ext = str(row.get(col_cuenta_ext)).strip().upper()
-                for k_banco, c_sap in mapa_cuentas.items():
-                    if k_banco in val_cta_ext or val_cta_ext in k_banco:
-                        cuenta_sap_asignada = c_sap
-                        break
+            # Tomar la cuenta de mayor directamente de la Columna B del extracto y limpiar formato
+            cta_mayor_raw = str(row.get(col_cuenta_mayor_extracto, '11100511')).strip()
+            cuenta_sap_asignada = cta_mayor_raw.split('.')[0] if cta_mayor_raw else '11100511'
 
             p1 = {c: None for c in columnas_multiusos}
             p1.update({
@@ -396,7 +381,8 @@ else:
                 'FECHA CONT': fecha_doc_val, 'FECHA REG': fecha_doc_val, 'MONEDA TR': 'COP',
                 'REFERENCIA': ref_raw, 'TEXTO CABECERA': f"CG REF {ref_raw}",
                 'IDENTIFICADOR PI': idx, 'POSICION': 2, 'CLAVE CONTABILIZACION': 40,
-                'CUENTA DE MAYOR': int(cuenta_sap_asignada), 'VALOR TR': valor_val, 'CEBE': cebe_val,
+                'CUENTA DE MAYOR': int(cuenta_sap_asignada) if cuenta_sap_asignada.isdigit() else cuenta_sap_asignada, 
+                'VALOR TR': valor_val, 'CEBE': cebe_val,
                 'ASIGNACION': nit_corporativo, 'TEXTO POSICION': texto_posicion
             })
             
@@ -422,7 +408,6 @@ else:
                 if uploaded_extracto:
                     try:
                         df_base = pd.read_excel(nombre_archivo_base, sheet_name=0)
-                        df_cuentas = pd.read_excel(nombre_archivo_base, sheet_name='Cuentas_Bancos')
                         df_extracto = pd.read_excel(uploaded_extracto)
                         
                         total_partidas_extracto = len(df_extracto)
@@ -457,7 +442,7 @@ else:
                             total_pendientes=len(pendientes_banco)
                         )
                         
-                        plano_multiusos = generar_multiusos(conciliados, columna_clave_extracto, df_base, columna_clave_base, df_cuentas, codigo_sociedad)
+                        plano_multiusos = generar_multiusos(conciliados, columna_clave_extracto, df_base, columna_clave_base, codigo_sociedad)
                         total_abiertas = len(pendientes_banco) + len(por_contabilizar)
                         
                         st.markdown("<br>", unsafe_allow_html=True)
