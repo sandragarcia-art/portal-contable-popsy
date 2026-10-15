@@ -144,7 +144,7 @@ else:
     st.markdown(f"""
         <div class="hero-banner">
             <div class="badge-tag">🍦 CONTROL EFECTIVO & MULTICASH • {fecha_actual}</div>
-            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico y Clasificación Automática</h1>
+            <h1 class="hero-title">¡Hola, {nombre_corto.split()[0]}! Diagnóstico y Totales por Categoría</h1>
             <p class="hero-sub">"Hacemos del mundo un lugar más dulce, feliz y divertido"</p>
         </div>
     """, unsafe_allow_html=True)
@@ -187,7 +187,7 @@ else:
     else:
         st.success(f"📁 Archivo maestro de referencia cargado: **{nombre_archivo_base}** (Sociedad: {codigo_sociedad})")
         
-        uploaded_multicash = st.file_uploader(f"Sube el Extracto Bancario para Diagnóstico y Procesamiento ({sociedad_seleccionada})", type=["xlsx", "XLSX", "xls"], key="diag_multicash_v3")
+        uploaded_multicash = st.file_uploader(f"Sube el Extracto Bancario para Diagnóstico y Procesamiento ({sociedad_seleccionada})", type=["xlsx", "XLSX", "xls"], key="diag_multicash_v4")
 
         if uploaded_multicash:
             try:
@@ -206,6 +206,16 @@ else:
                 df_cuentas_bancos.columns = [str(c).strip().upper() for c in df_cuentas_bancos.columns]
                 df_extracto.columns = [str(c).strip().upper() for c in df_extracto.columns]
                 
+                # Identificar columna de valores/monto automáticamente
+                cols_lower = [str(c).lower() for c in df_extracto.columns]
+                col_valor_name = next((df_extracto.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
+                
+                if col_valor_name:
+                    df_extracto['VALOR_LIMPIO'] = pd.to_numeric(df_extracto[col_valor_name], errors='coerce').fillna(0)
+                else:
+                    # Si no encuentra columna obvia, toma una numérica o la última
+                    df_extracto['VALOR_LIMPIO'] = 0.0
+
                 # Mapa de búsqueda por TEXTO MULTICASH
                 df_base_tiendas['TEXTO_CLEAN'] = df_base_tiendas['TEXTO MULTICAHS'].astype(str).str.strip().str.upper()
                 mapa_multicash = {}
@@ -216,7 +226,6 @@ else:
                         'tipificacion': r.get('TIPIFICACION', '')
                     }
                     
-                # Detectar columna de texto en el extracto
                 col_ref_ext = df_extracto.columns[min(9, len(df_extracto.columns) - 1)]
                 
                 def clasificar_con_maestra(row):
@@ -238,44 +247,47 @@ else:
                 df_extracto['CB_SAP'] = [r[2] for r in resultados_clasificacion]
                 
                 total_registros = len(df_extracto)
+                total_monto_general = df_extracto['VALOR_LIMPIO'].sum()
+                
                 df_cons = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'Consignaciones']
                 df_dtf = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'Datafonos']
                 df_qr = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'QR']
                 df_por_id = df_extracto[df_extracto['TIPIFICACION_DETECTADA'] == 'POR IDENTIFICAR']
                 
-                # --- DASHBOARD DE RESULTADOS DE TIPOS DE OPERACIÓN ---
-                st.markdown("#### 📊 Diagnóstico y Clasificación Unificada")
+                # --- DASHBOARD DE RESULTADOS (CANTIDAD Y VALORES) ---
+                st.markdown("#### 📊 Diagnóstico General (Partidas y Valores)")
+                
                 m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("📄 Total Extracto", f"{total_registros} partidas")
-                m2.metric("🏦 Consignaciones", f"{len(df_cons)} partidas", f"{(len(df_cons)/total_registros)*100:.1f}%" if total_registros > 0 else "0.0%")
-                m3.metric("💳 Datáfonos", f"{len(df_dtf)} partidas", f"{(len(df_dtf)/total_registros)*100:.1f}%" if total_registros > 0 else "0.0%")
-                m4.metric("📱 QR", f"{len(df_qr)} partidas", f"{(len(df_qr)/total_registros)*100:.1f}%" if total_registros > 0 else "0.0%")
-                m5.metric("❓ Por Identificar", f"{len(df_por_id)} partidas", delta_color="inverse")
+                m1.metric("📄 Total Extracto", f"{total_registros} part.", f"${total_monto_general:,.2f}")
+                m2.metric("🏦 Consignaciones", f"{len(df_cons)} part.", f"${df_cons['VALOR_LIMPIO'].sum():,.2f}")
+                m3.metric("💳 Datáfonos", f"{len(df_dtf)} part.", f"${df_dtf['VALOR_LIMPIO'].sum():,.2f}")
+                m4.metric("📱 QR", f"{len(df_qr)} part.", f"${df_qr['VALOR_LIMPIO'].sum():,.2f}")
+                m5.metric("❓ Por Identificar", f"{len(df_por_id)} part.", f"${df_por_id['VALOR_LIMPIO'].sum():,.2f}", delta_color="inverse")
                 
                 st.markdown("---")
                 
                 # --- NAVEGACIÓN EN PESTAÑAS DE DETALLE ---
                 t_cons, t_dtf, t_qr, t_pend = st.tabs([
-                    "🏦 Consignaciones", 
-                    "💳 Datáfonos", 
-                    "📱 QR", 
-                    "❓ Por Identificar / Cartera"
+                    f"🏦 Consignaciones (${df_cons['VALOR_LIMPIO'].sum():,.2f})", 
+                    f"💳 Datáfonos (${df_dtf['VALOR_LIMPIO'].sum():,.2f})", 
+                    f"📱 QR (${df_qr['VALOR_LIMPIO'].sum():,.2f})", 
+                    f"❓ Por Identificar (${df_por_id['VALOR_LIMPIO'].sum():,.2f})"
                 ])
                 
                 with t_cons:
-                    st.markdown(f"##### Transacciones Identificadas como Consignaciones ({len(df_cons)})")
+                    st.markdown(f"##### Transacciones Identificadas como Consignaciones ({len(df_cons)} registros)")
                     st.dataframe(df_cons, use_container_width=True)
 
                 with t_dtf:
-                    st.markdown(f"##### Transacciones Identificadas como Datáfonos ({len(df_dtf)})")
+                    st.markdown(f"##### Transacciones Identificadas como Datáfonos ({len(df_dtf)} registros)")
                     st.dataframe(df_dtf, use_container_width=True)
 
                 with t_qr:
-                    st.markdown(f"##### Transacciones Identificadas como Código QR ({len(df_qr)})")
+                    st.markdown(f"##### Transacciones Identificadas como Código QR ({len(df_qr)} registros)")
                     st.dataframe(df_qr, use_container_width=True)
 
                 with t_pend:
-                    st.markdown(f"##### Transacciones Sin Match Directo / Cartera ({len(df_por_id)})")
+                    st.markdown(f"##### Transacciones Sin Match Directo / Cartera ({len(df_por_id)} registros)")
                     st.dataframe(df_por_id, use_container_width=True)
 
             except Exception as e:
