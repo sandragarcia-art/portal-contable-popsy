@@ -420,7 +420,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v9")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v10")
         
         if uploaded_multicash_gen:
             try:
@@ -609,8 +609,11 @@ else:
                     st.metric("Total Transacciones Datáfonos", f"{len(df_d_raw)} registros", f"${df_d_raw['VALOR_LIMPIO'].sum():,.2f}")
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    plano_d = generar_plano_multiusos_datafonos(df_d_raw, df_matriz_dtf, codigo_sociedad)
-                    csv_d = plano_d.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    with st.spinner("Generando el Plano Multiusos SAP de Datáfonos... Por favor espera un momento ⏳"):
+                        plano_d = generar_plano_multiusos_datafonos(df_d_raw, df_matriz_dtf, codigo_sociedad)
+                        csv_d = plano_d.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    
+                    st.success(f"¡Plano generado con éxito! Total de posiciones contables creadas: {len(plano_d):,}")
                     
                     st.download_button(
                         label="📥 Descargar Plano Multiusos SAP - Datáfonos (.csv)",
