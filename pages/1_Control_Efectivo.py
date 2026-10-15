@@ -302,9 +302,10 @@ else:
             'VALOR LC', 'FECHA RFERENCIA PAGO', 'DOCUMENTO REFERENCIA', 'FECHA REFERENCIA', 'BLOQUEO PAGO'
         ]
         
+        # Mapeo de datos base (referencias, centro de beneficio, PDV SAP)
         df_base.columns = [str(c).strip().upper() for c in df_base.columns]
-        col_cb_sap = next((c for c in df_base.columns if 'CB SAP' in c), None)
-        col_pdv_sap = next((c for c in df_base.columns if 'PDV SAP' in c), None)
+        col_cb_sap = next((c for c in df_base.columns if 'CB SAP' in c or 'CEBE' in c), None)
+        col_pdv_sap = next((c for c in df_base.columns if 'PDV SAP' in c or 'NOMBRE' in c), None)
         
         mapa_maestro = {}
         for _, r in df_base.iterrows():
@@ -315,25 +316,24 @@ else:
                     'pdv_sap': str(r.get(col_pdv_sap, '')) if col_pdv_sap else ''
                 }
 
+        # Mapeo dinámico de cuentas de bancos desde la hoja Cuentas_Bancos
         df_cuentas.columns = [str(c).strip().upper() for c in df_cuentas.columns]
-        col_sap = next((c for c in df_cuentas.columns if 'SAP' in c), df_cuentas.columns[min(3, len(df_cuentas.columns)-1)])
-        col_cta_maestro = next((c for c in df_cuentas.columns if 'CUENTA' in c), df_cuentas.columns[0])
-        col_empresa = next((c for c in df_cuentas.columns if 'EMPRESA' in c), codigo_sociedad)
+        col_sap = next((c for c in df_cuentas.columns if 'SAP' in c or 'CUENTA SAP' in c), df_cuentas.columns[min(1, len(df_cuentas.columns)-1)])
+        col_cta_maestro = next((c for c in df_cuentas.columns if 'CUENTA' in c or 'BANCO' in c or 'DESCRIPCION' in c), df_cuentas.columns[0])
         
         mapa_cuentas = {}
         for _, r in df_cuentas.iterrows():
             key = str(r.get(col_cta_maestro)).strip().upper()
-            mapa_cuentas[key] = {
-                'cuenta_sap': str(r.get(col_sap)),
-                'empresa': str(r.get(col_empresa, codigo_sociedad))
-            }
+            val_sap = str(r.get(col_sap)).strip().split('.')[0]
+            if key and val_sap:
+                mapa_cuentas[key] = val_sap
 
         filas = []
         fecha_hoy = datetime.now().strftime('%d.%m.%Y')
         
         cols_lower = [str(c).lower() for c in df_conciliados.columns]
         col_valor_name = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c), df_conciliados.columns[min(5, len(df_conciliados.columns)-1)])
-        col_cuenta_ext = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'banco' in c), None)
+        col_cuenta_ext = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'banco' in c or 'descripcion' in c), None)
         col_fecha_ext = next((df_conciliados.columns[i] for i, c in enumerate(cols_lower) if 'fecha' in c), None)
 
         cuenta_caja_default = '11050502'
@@ -370,12 +370,15 @@ else:
                 pdv_val = mapa_maestro[ref_clean]['pdv_sap'] or f"REF {ref_raw}"
                 
             texto_posicion = f"{fecha_doc_val} CG {pdv_val}"
-            cuenta_sap_asignada = "11100511"
             
+            # Asignación dinámica de la cuenta de mayor SAP según el banco correspondiente
+            cuenta_sap_asignada = "11100511"
             if col_cuenta_ext:
                 val_cta_ext = str(row.get(col_cuenta_ext)).strip().upper()
-                if val_cta_ext in mapa_cuentas:
-                    cuenta_sap_asignada = mapa_cuentas[val_cta_ext]['cuenta_sap']
+                for k_banco, c_sap in mapa_cuentas.items():
+                    if k_banco in val_cta_ext or val_cta_ext in k_banco:
+                        cuenta_sap_asignada = c_sap
+                        break
 
             p1 = {c: None for c in columnas_multiusos}
             p1.update({
@@ -424,7 +427,6 @@ else:
                         
                         total_partidas_extracto = len(df_extracto)
                         
-                        # Columna A de la base (índice 0) y Columna J del extracto (índice 9)
                         columna_clave_base = df_base.columns[0]
                         columna_clave_extracto = df_extracto.columns[min(9, len(df_extracto.columns) - 1)]
                         
