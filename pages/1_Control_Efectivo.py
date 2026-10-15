@@ -1,11 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import io
 import os
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -203,45 +199,6 @@ else:
     else:
         codigo_sociedad = None
 
-    def aplicar_estilos_excel_bytes(wb):
-        NAVY_HEADER = "003366"
-        WHITE_TEXT = "FFFFFF"
-        ZEBRA_FILL = "F2F5F9"
-        BORDER_COLOR = "D9D9D9"
-        
-        thin_border = Border(
-            left=Side(style='thin', color=BORDER_COLOR), right=Side(style='thin', color=BORDER_COLOR),
-            top=Side(style='thin', color=BORDER_COLOR), bottom=Side(style='thin', color=BORDER_COLOR)
-        )
-        
-        for sheetname in wb.sheetnames:
-            ws = wb[sheetname]
-            ws.views.sheetView[0].showGridLines = True
-            
-            if ws.max_row > 0:
-                ws.row_dimensions[1].height = 26
-                for col in range(1, ws.max_column + 1):
-                    cell = ws.cell(row=1, column=col)
-                    cell.font = Font(name='Segoe UI', size=10, bold=True, color=WHITE_TEXT)
-                    cell.fill = PatternFill(start_color=NAVY_HEADER, end_color=NAVY_HEADER, fill_type="solid")
-                    cell.alignment = Alignment(horizontal='center', vertical='center')
-                    cell.border = thin_border
-                    
-                for row in range(2, ws.max_row + 1):
-                    ws.row_dimensions[row].height = 20
-                    for col in range(1, ws.max_column + 1):
-                        cell = ws.cell(row=row, column=col)
-                        cell.font = Font(name='Segoe UI', size=10)
-                        cell.border = thin_border
-                        if row % 2 == 0:
-                            cell.fill = PatternFill(start_color=ZEBRA_FILL, end_color=ZEBRA_FILL, fill_type="solid")
-                            
-                for col in ws.columns:
-                    max_len = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = get_column_letter(col[0].column)
-                    ws.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 40)
-        return wb
-
     def generar_plano_multiusos(df_filtrado, tipo_prefijo, codigo_sociedad):
         columnas_multiusos = [
             'ID', 'USUARIO', 'LEDGER', 'FECHA DOC', 'CLASE DOCUMENTO', 'SOCIEDAD', 'FECHA CONT',
@@ -328,7 +285,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v3")
         
         if uploaded_multicash_gen:
             try:
@@ -430,7 +387,7 @@ else:
             st.markdown(f"### 🏦 Módulo de Consignaciones • {sociedad_seleccionada}")
             st.markdown("Sube el **Extracto Bancario / Multicash** para procesar las consignaciones y descargar el Plano Multiusos SAP.")
             
-            uploaded_cons = st.file_uploader("Sube el Extracto Bancario (Consignaciones)", type=["xlsx", "XLSX", "xls", "csv"], key="up_cons_tab")
+            uploaded_cons = st.file_uploader("Sube el Extracto Bancario (Consignaciones)", type=["xlsx", "XLSX", "xls", "csv"], key="up_cons_tab_v3")
             
             if uploaded_cons:
                 try:
@@ -461,24 +418,18 @@ else:
                     
                     st.metric("Total Consignaciones Detectadas", f"{len(df_c_filtrado)} registros", f"${df_c_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     
-                    plano_c = generar_plano_multiusos(df_c_filtrado, "CG", codigo_sociedad)
-                    out_c = io.BytesIO()
-                    with pd.ExcelWriter(out_c, engine='openpyxl') as w:
-                        plano_c.to_excel(w, sheet_name='Multiusos_Consignaciones', index=False)
-                    out_c.seek(0)
-                    wb_c = openpyxl.load_workbook(out_c)
-                    wb_c_est = aplicar_estilos_excel_bytes(wb_c)
-                    final_c = io.BytesIO()
-                    wb_c_est.save(final_c)
-                    final_c.seek(0)
-                    
                     st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # Generación optimizada al vuelo mediante CSV para evitar bloqueos por tamaño
+                    plano_c = generar_plano_multiusos(df_c_filtrado, "CG", codigo_sociedad)
+                    csv_c = plano_c.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    
                     st.download_button(
-                        label="📥 Descargar Plano Multiusos SAP - Consignaciones (.xlsx)",
-                        data=final_c,
-                        file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="btn_dl_cons_final",
+                        label="📥 Descargar Plano Multiusos SAP - Consignaciones (.csv)",
+                        data=csv_c,
+                        file_name=f"Multiusos_Consignaciones_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        key="btn_dl_cons_csv",
                         use_container_width=True
                     )
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -491,7 +442,7 @@ else:
             st.markdown(f"### 💳 Módulo de Datáfonos • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Datáfonos / Pasarelas** independiente para procesarlo y descargar su Plano Multiusos SAP.")
             
-            uploaded_dtf = st.file_uploader("Sube el Archivo de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_tab")
+            uploaded_dtf = st.file_uploader("Sube el Archivo de Datáfonos", type=["xlsx", "XLSX", "xls", "csv"], key="up_dtf_tab_v3")
             
             if uploaded_dtf:
                 try:
@@ -522,24 +473,17 @@ else:
                     
                     st.metric("Total Datáfonos Detectados", f"{len(df_d_filtrado)} registros", f"${df_d_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     
-                    plano_d = generar_plano_multiusos(df_d_filtrado, "DTF", codigo_sociedad)
-                    out_d = io.BytesIO()
-                    with pd.ExcelWriter(out_d, engine='openpyxl') as w:
-                        plano_d.to_excel(w, sheet_name='Multiusos_Datafonos', index=False)
-                    out_d.seek(0)
-                    wb_d = openpyxl.load_workbook(out_d)
-                    wb_d_est = aplicar_estilos_excel_bytes(wb_d)
-                    final_d = io.BytesIO()
-                    wb_d_est.save(final_d)
-                    final_d.seek(0)
-                    
                     st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    plano_d = generar_plano_multiusos(df_d_filtrado, "DTF", codigo_sociedad)
+                    csv_d = plano_d.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    
                     st.download_button(
-                        label="📥 Descargar Plano Multiusos SAP - Datáfonos (.xlsx)",
-                        data=final_d,
-                        file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="btn_dl_dtf_final",
+                        label="📥 Descargar Plano Multiusos SAP - Datáfonos (.csv)",
+                        data=csv_d,
+                        file_name=f"Multiusos_Datafonos_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        key="btn_dl_dtf_csv",
                         use_container_width=True
                     )
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -552,7 +496,7 @@ else:
             st.markdown(f"### 📱 Módulo de Códigos QR • {sociedad_seleccionada}")
             st.markdown("Sube el **Archivo de Códigos QR** independiente para procesarlo y descargar su Plano Multiusos SAP.")
             
-            uploaded_qr = st.file_uploader("Sube el Archivo de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_tab")
+            uploaded_qr = st.file_uploader("Sube el Archivo de Códigos QR", type=["xlsx", "XLSX", "xls", "csv"], key="up_qr_tab_v3")
             
             if uploaded_qr:
                 try:
@@ -583,24 +527,17 @@ else:
                     
                     st.metric("Total QR Detectados", f"{len(df_q_filtrado)} registros", f"${df_q_filtrado['VALOR_LIMPIO'].sum():,.2f}")
                     
-                    plano_q = generar_plano_multiusos(df_q_filtrado, "QR", codigo_sociedad)
-                    out_q = io.BytesIO()
-                    with pd.ExcelWriter(out_q, engine='openpyxl') as w:
-                        plano_q.to_excel(w, sheet_name='Multiusos_QR', index=False)
-                    out_q.seek(0)
-                    wb_q = openpyxl.load_workbook(out_q)
-                    wb_q_est = aplicar_estilos_excel_bytes(wb_q)
-                    final_q = io.BytesIO()
-                    wb_q_est.save(final_q)
-                    final_q.seek(0)
-                    
                     st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    plano_q = generar_plano_multiusos(df_q_filtrado, "QR", codigo_sociedad)
+                    csv_q = plano_q.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    
                     st.download_button(
-                        label="📥 Descargar Plano Multiusos SAP - Códigos QR (.xlsx)",
-                        data=final_q,
-                        file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="btn_dl_qr_final",
+                        label="📥 Descargar Plano Multiusos SAP - Códigos QR (.csv)",
+                        data=csv_q,
+                        file_name=f"Multiusos_QR_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        key="btn_dl_qr_csv",
                         use_container_width=True
                     )
                     st.markdown("<br>", unsafe_allow_html=True)
