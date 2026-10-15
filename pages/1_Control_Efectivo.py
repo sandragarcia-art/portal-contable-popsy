@@ -399,7 +399,7 @@ else:
                     st.markdown(f"""
                         <div class="metric-card">
                             <div class="metric-title">QR</div>
-                            <div class="metric-val">{len(df_q} part.</div>
+                            <div class="metric-val">{len(df_q)} part.</div>
                             <div class="metric-sub">${df_q['VALOR_LIMPIO'].sum():,.2f}</div>
                         </div>
                     """, unsafe_allow_html=True)
