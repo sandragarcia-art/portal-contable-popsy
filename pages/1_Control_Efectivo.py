@@ -1,11 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from datetime import datetime
 import os
-import io
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -627,7 +624,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v21")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v22")
         
         if uploaded_multicash_gen:
             try:
@@ -721,28 +718,21 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DASHBOARD VISUAL (GRÁFICOS INTEGRADOS) ---
+                # --- DASHBOARD VISUAL CON STREAMLIT CHARTS (NATIVO, SIN BUGS) ---
                 col_chart1, col_chart2 = st.columns(2)
                 
                 with col_chart1:
-                    st.markdown("##### 🍕 Distribución Porcentual por Canal de Pago")
-                    resumen_tipos = df_ext_gen.groupby('TIPO')['VALOR_LIMPIO'].sum()
-                    fig1, ax1 = plt.subplots(figsize=(6, 4))
-                    colors = ['#C2185B', '#10B981', '#F59E0B', '#EF4444', '#6366F1']
-                    ax1.pie(resumen_tipos.values, labels=resumen_tipos.index, autopct='%1.1f%%', startangle=140, colors=colors[:len(resumen_tipos)])
-                    ax1.axis('equal')
-                    st.pyplot(fig1)
+                    st.markdown("##### 📊 Distribución de Recaudo por Canal")
+                    resumen_tipos = df_ext_gen.groupby('TIPO')['VALOR_LIMPIO'].sum().reset_index()
+                    resumen_tipos.columns = ['Canal', 'Monto Total ($)']
+                    st.bar_chart(resumen_tipos.set_index('Canal'))
 
                 with col_chart2:
-                    st.markdown("##### 🏆 Top 10 Puntos de Venta (PDV SAP)")
+                    st.markdown("##### 🏆 Top 10 Puntos de Venta con Mayor Recaudo")
                     df_pdv_sum = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP')['VALOR_LIMPIO'].sum().nlargest(10).reset_index()
+                    df_pdv_sum.columns = ['PDV SAP', 'Monto ($)']
                     if not df_pdv_sum.empty:
-                        fig2, ax2 = plt.subplots(figsize=(7, 4))
-                        sns.barplot(data=df_pdv_sum, y='PDV_SAP', x='VALOR_LIMPIO', palette='magma', ax=ax2)
-                        ax2.set_title("Recaudo Acumulado ($)", fontsize=10)
-                        ax2.set_xlabel("")
-                        ax2.set_ylabel("")
-                        st.pyplot(fig2)
+                        st.bar_chart(df_pdv_sum.set_index('PDV SAP'))
                     else:
                         st.info("No hay datos de PDV homologados para graficar.")
 
