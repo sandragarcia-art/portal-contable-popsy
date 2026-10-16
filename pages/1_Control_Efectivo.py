@@ -621,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v39")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v40")
         
         if uploaded_multicash_gen:
             try:
@@ -634,7 +634,8 @@ else:
                 cols_lower = [str(c).lower() for c in df_ext_gen.columns]
                 col_val_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
                 
-                df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0) if col_val_gen else 0.0
+                # FORZAMOS VALOR ABSOLUTO PARA QUE NO QUEDEN NEGATIVOS
+                df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0).abs() if col_val_gen else 0.0
                 col_ref_gen = df_ext_gen.columns[min(9, len(df_ext_gen.columns) - 1)]
                 
                 def clasificar_gen(row):
@@ -715,36 +716,29 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DASHBOARD VISUALIZACIÓN GRÁFICA ---
+                # --- DASHBOARD VISUALIZACIÓN GRÁFICA CLARA Y ORDENADA ---
                 col_chart1, col_chart2 = st.columns(2)
-                
-                color_domain = ['Consignaciones', 'Datafonos', 'POR IDENTIFICAR', 'QR']
-                color_range = ['#111827', '#059669', '#C2185B', '#D97706']
 
                 with col_chart1:
-                    st.markdown("#### 🍩 Distribución de Recaudo por Canal")
+                    st.markdown("#### 📊 Distribución de Recaudo por Canal")
                     df_pie = df_ext_gen.groupby('TIPO').agg(
                         Monto=('VALOR_LIMPIO', 'sum'),
                         Cantidad=('VALOR_LIMPIO', 'count')
-                    ).reset_index()
+                    ).reset_index().sort_values(by='Monto', ascending=False)
                     
-                    chart_donut = alt.Chart(df_pie).mark_arc(innerRadius=70, outerRadius=110, stroke='#FFFFFF', strokeWidth=2).encode(
-                        theta=alt.Theta(field="Monto", type="quantitative"),
-                        color=alt.Color(
-                            field="TIPO", 
-                            type="nominal", 
-                            scale=alt.Scale(domain=color_domain, range=color_range), 
-                            legend=alt.Legend(title="Canal", orient="bottom")
-                        ),
+                    # Gráfico de barras horizontales claro y 100% entendible para la distribución por canal
+                    chart_canales = alt.Chart(df_pie).mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6, color='#111827').encode(
+                        x=alt.X('Monto:Q', title=None, axis=alt.Axis(format="$,s", grid=False)),
+                        y=alt.Y('TIPO:N', sort='-x', title=None, axis=alt.Axis(labelLimit=150)),
                         tooltip=['TIPO', alt.Tooltip('Monto', format="$,.2f", title="Monto Total"), 'Cantidad']
                     ).properties(height=320).configure_view(strokeWidth=0)
                     
-                    st.altair_chart(chart_donut, use_container_width=True)
+                    st.altair_chart(chart_canales, use_container_width=True)
 
                 with col_chart2:
                     st.markdown("#### 🏆 Top 10 Puntos de Venta (Mayor Recaudo)")
                     
-                    # Agrupamos y ordenamos estrictamente de mayor a menor
+                    # Agrupamos y ordenamos estrictamente de mayor a menor en positivo
                     df_top = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP').agg(
                         Recaudo=('VALOR_LIMPIO', 'sum')
                     ).reset_index()
@@ -865,7 +859,7 @@ else:
                     col_val = next((df_c_raw.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
                     col_ref = df_c_raw.columns[min(9, len(df_c_raw.columns) - 1)]
                     
-                    df_c_raw['VALOR_LIMPIO'] = pd.to_numeric(df_c_raw[col_val], errors='coerce').fillna(0) if col_val else 0.0
+                    df_c_raw['VALOR_LIMPIO'] = pd.to_numeric(df_c_raw[col_val], errors='coerce').fillna(0).abs() if col_val else 0.0
                     
                     def filtrar_c(row):
                         ref_text = str(row.get(col_ref, '')).strip().upper()
@@ -949,7 +943,7 @@ else:
                     cols_lower = [str(c).lower() for c in df_d_raw.columns]
                     
                     col_val_tot = next((df_d_raw.columns[i] for i, c in enumerate(cols_lower) if 'vlr total' in c or 'valor total' in c or 'total' in c), None)
-                    df_d_raw['VALOR_LIMPIO'] = pd.to_numeric(df_d_raw[col_val_tot], errors='coerce').fillna(0) if col_val_tot else 0.0
+                    df_d_raw['VALOR_LIMPIO'] = pd.to_numeric(df_d_raw[col_val_tot], errors='coerce').fillna(0).abs() if col_val_tot else 0.0
                     
                     def mapear_comercio(row):
                         comercio = str(row.get('COMERCIO', '')).strip()
@@ -1032,7 +1026,7 @@ else:
                         cols_lower = [str(c).lower() for c in df_q_raw.columns]
                         
                         col_val_qr = next((df_q_raw.columns[i] for i, c in enumerate(cols_lower) if 'valor total' in c or 'vlr total' in c or 'valor compra' in c or 'total' in c), None)
-                        df_q_raw['VALOR_LIMPIO'] = pd.to_numeric(df_q_raw[col_val_qr], errors='coerce').fillna(0) if col_val_qr else 0.0
+                        df_q_raw['VALOR_LIMPIO'] = pd.to_numeric(df_q_raw[col_val_qr], errors='coerce').fillna(0).abs() if col_val_qr else 0.0
                         
                         def mapear_comercio_qr(row):
                             comercio = str(row.get('CODIGO UNICO', '')).strip()
@@ -1117,7 +1111,7 @@ else:
                     cols_lower = [str(c).lower() for c in df_pw_raw.columns]
                     
                     col_val_pw = next((df_pw_raw.columns[i] for i, c in enumerate(cols_lower) if 'total' in c or 'valor' in c or 'monto' in c), None)
-                    df_pw_raw['VALOR_LIMPIO'] = pd.to_numeric(df_pw_raw[col_val_pw], errors='coerce').fillna(0) if col_val_pw else 0.0
+                    df_pw_raw['VALOR_LIMPIO'] = pd.to_numeric(df_pw_raw[col_val_pw], errors='coerce').fillna(0).abs() if col_val_pw else 0.0
                     
                     def mapear_comercio_pw(row):
                         comercio = str(row.get('COMERCIO', row.get('REFERENCIA', ''))).strip()
