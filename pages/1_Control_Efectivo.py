@@ -621,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v42")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v43")
         
         if uploaded_multicash_gen:
             try:
@@ -633,8 +633,9 @@ else:
                 df_ext_gen.columns = [str(c).strip().upper() for c in df_ext_gen.columns]
                 cols_lower = [str(c).lower() for c in df_ext_gen.columns]
                 col_val_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
+                col_cta_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'cta' in c or 'banco' in c), df_ext_gen.columns[1] if len(df_ext_gen.columns) > 1 else 'Cuenta')
                 
-                # VALOR ABSOLUTO PARA EVITAR MONTOS NEGATIVOS
+                # VALOR ABSOLUTO
                 df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0).abs() if col_val_gen else 0.0
                 col_ref_gen = df_ext_gen.columns[min(9, len(df_ext_gen.columns) - 1)]
                 
@@ -716,84 +717,83 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DASHBOARD VISUALIZACIÓN GRÁFICA ---
+                # --- NUEVA SECCIÓN DE ANÁLISIS: CUENTAS BANCARIAS Y TOP 10 PENDIENTES ---
                 col_chart1, col_chart2 = st.columns(2)
-                
-                color_domain = ['Consignaciones', 'Datafonos', 'POR IDENTIFICAR', 'QR']
-                color_range = ['#111827', '#059669', '#C2185B', '#D97706']
 
+                # 1. LADO IZQUIERDO: RECAUDO POR CUENTA BANCARIA
                 with col_chart1:
-                    st.markdown("#### 🍩 Distribución de Recaudo por Canal (%)")
-                    
-                    df_pie = df_ext_gen.groupby('TIPO').agg(
-                        Monto=('VALOR_LIMPIO', 'sum'),
-                        Cantidad=('VALOR_LIMPIO', 'count')
-                    ).reset_index()
-                    
-                    total_monto_canal = df_pie['Monto'].sum()
-                    if total_monto_canal > 0:
-                        df_pie['Porcentaje_Num'] = (df_pie['Monto'] / total_monto_canal) * 100
-                        df_pie['Porcentaje_Texto'] = df_pie['Porcentaje_Num'].apply(lambda x: f"{x:.1f}%")
-                        df_pie['Canal_Con_Pct'] = df_pie['TIPO'] + " (" + df_pie['Porcentaje_Texto'] + ")"
-                    else:
-                        df_pie['Porcentaje_Num'] = 0
-                        df_pie['Porcentaje_Texto'] = "0%"
-                        df_pie['Canal_Con_Pct'] = df_pie['TIPO'] + " (0%)"
-
-                    # Gráfico de Torta / Dona mostrando únicamente Porcentajes (%)
-                    chart_donut = alt.Chart(df_pie).mark_arc(innerRadius=70, outerRadius=110, stroke='#FFFFFF', strokeWidth=2).encode(
-                        theta=alt.Theta(field="Monto", type="quantitative"),
-                        color=alt.Color(
-                            field="Canal_Con_Pct", 
-                            type="nominal", 
-                            scale=alt.Scale(
-                                domain=list(df_pie['Canal_Con_Pct']), 
-                                range=color_range[:len(df_pie)]
-                            ), 
-                            legend=alt.Legend(title="Canal y Participación", orient="bottom")
-                        ),
-                        tooltip=[
-                            alt.Tooltip('TIPO', title="Canal"), 
-                            alt.Tooltip('Porcentaje_Texto', title="Porcentaje (%)"), 
-                            alt.Tooltip('Monto', format="$,.2f", title="Monto Total"), 
-                            'Cantidad'
-                        ]
-                    ).properties(height=320).configure_view(strokeWidth=0)
-                    
-                    st.altair_chart(chart_donut, use_container_width=True)
-
-                with col_chart2:
-                    st.markdown("#### 📋 Resumen Analítico por Canal")
-                    
-                    df_resumen_canal = df_ext_gen.groupby('TIPO').agg(
+                    st.markdown("#### 🏦 Recaudo por Cuenta Bancaria")
+                    df_ext_gen['CUENTA_MOSTRAR'] = df_ext_gen[col_cta_gen].astype(str).str.strip()
+                    df_cuentas = df_ext_gen.groupby('CUENTA_MOSTRAR').agg(
                         Partidas=('VALOR_LIMPIO', 'count'),
                         Monto_Total=('VALOR_LIMPIO', 'sum')
-                    ).reset_index()
-                    
-                    monto_global = df_resumen_canal['Monto_Total'].sum()
-                    if monto_global > 0:
-                        df_resumen_canal['% Participación'] = (df_resumen_canal['Monto_Total'] / monto_global * 100).round(2).astype(str) + '%'
-                    else:
-                        df_resumen_canal['% Participación'] = '0%'
+                    ).reset_index().sort_values(by='Monto_Total', ascending=False)
 
-                    df_resumen_canal['Monto Total'] = df_resumen_canal['Monto_Total'].apply(lambda x: f"${x:,.2f}")
-                    df_resumen_canal = df_resumen_canal.rename(columns={'TIPO': 'Canal de Recaudo'})
-                    
+                    monto_global_cuentas = df_cuentas['Monto_Total'].sum()
+                    if monto_global_cuentas > 0:
+                        df_cuentas['% Participación'] = (df_cuentas['Monto_Total'] / monto_global_cuentas * 100).round(2).astype(str) + '%'
+                    else:
+                        df_cuentas['% Participación'] = '0%'
+
+                    df_cuentas['Monto Recaudado'] = df_cuentas['Monto_Total'].apply(lambda x: f"${x:,.2f}")
+                    df_cuentas = df_cuentas.rename(columns={'CUENTA_MOSTRAR': 'Cuenta Bancaria / ID'})
+
                     st.dataframe(
-                        df_resumen_canal[['Canal de Recaudo', 'Partidas', 'Monto Total', '% Participación']],
+                        df_cuentas[['Cuenta Bancaria / ID', 'Partidas', 'Monto Recaudado', '% Participación']],
                         use_container_width=True,
-                        height=220
+                        height=280
                     )
+
+                # 2. LADO DERECHO: TOP 10 PARTIDAS POR IDENTIFICAR DE MAYOR VALOR
+                with col_chart2:
+                    st.markdown("#### ⚠️ Top 10 Partidas Por Identificar (Mayores Valores)")
                     
-                    with st.expander("🔍 Ver Top 10 Puntos de Venta (Mayor Recaudo)"):
-                        df_top = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP').agg(
-                            Recaudo=('VALOR_LIMPIO', 'sum')
-                        ).reset_index()
+                    if len(df_p_gen) > 0:
+                        # Creamos una columna concisa con la referencia y número de renglón
+                        df_p_top = df_p_gen.copy()
+                        df_p_top['REF_ETIQUETA'] = df_p_top[col_ref_gen].astype(str).str.strip().str[:28]
                         
-                        df_top = df_top.sort_values(by='Recaudo', ascending=False).head(10).reset_index(drop=True)
-                        df_top['Monto Recaudado'] = df_top['Recaudo'].apply(lambda x: f"${x:,.2f}")
-                        df_top = df_top.rename(columns={'PDV_SAP': 'Punto de Venta / Tienda SAP'})
-                        st.dataframe(df_top[['Punto de Venta / Tienda SAP', 'Monto Recaudado']], use_container_width=True)
+                        df_p_top = df_p_top.sort_values(by='VALOR_LIMPIO', ascending=False).head(10).reset_index(drop=True)
+                        
+                        max_pi_val = df_p_top['VALOR_LIMPIO'].max()
+                        df_p_top['EsTop1'] = df_p_top['VALOR_LIMPIO'] == max_pi_val
+                        
+                        bars_pi = alt.Chart(df_p_top).mark_bar(
+                            cornerRadiusTopRight=6, 
+                            cornerRadiusBottomRight=6
+                        ).encode(
+                            x=alt.X('VALOR_LIMPIO:Q', title=None, axis=alt.Axis(format="$,s", grid=False)),
+                            y=alt.Y(
+                                'REF_ETIQUETA:N', 
+                                sort=alt.EncodingSortField(field="VALOR_LIMPIO", order="descending"), 
+                                title=None, 
+                                axis=alt.Axis(labelLimit=220)
+                            ),
+                            color=alt.Color(
+                                'EsTop1:N',
+                                scale=alt.Scale(domain=[True, False], range=['#6b1d3f', '#DC2626']),
+                                legend=None
+                            ),
+                            tooltip=['REF_ETIQUETA', alt.Tooltip('VALOR_LIMPIO', format="$,.2f", title="Valor Pendiente")]
+                        )
+                        
+                        text_pi = alt.Chart(df_p_top).mark_text(
+                            align='left',
+                            baseline='middle',
+                            dx=6,
+                            fontSize=11,
+                            fontWeight='bold',
+                            color='#4B5563'
+                        ).encode(
+                            x=alt.X('VALOR_LIMPIO:Q'),
+                            y=alt.Y('REF_ETIQUETA:N', sort=alt.EncodingSortField(field="VALOR_LIMPIO", order="descending")),
+                            text=alt.Text('VALOR_LIMPIO:Q', format="$,.0f")
+                        )
+                        
+                        chart_top_pi = (bars_pi + text_pi).properties(height=280).configure_view(strokeWidth=0)
+                        st.altair_chart(chart_top_pi, use_container_width=True)
+                    else:
+                        st.success("🎉 ¡Excelente! No hay partidas pendientes por identificar en este extracto.")
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
