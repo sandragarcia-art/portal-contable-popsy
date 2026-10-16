@@ -621,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v41")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v42")
         
         if uploaded_multicash_gen:
             try:
@@ -723,22 +723,41 @@ else:
                 color_range = ['#111827', '#059669', '#C2185B', '#D97706']
 
                 with col_chart1:
-                    st.markdown("#### 🍩 Distribución de Recaudo por Canal")
+                    st.markdown("#### 🍩 Distribución de Recaudo por Canal (%)")
+                    
                     df_pie = df_ext_gen.groupby('TIPO').agg(
                         Monto=('VALOR_LIMPIO', 'sum'),
                         Cantidad=('VALOR_LIMPIO', 'count')
                     ).reset_index()
                     
-                    # Gráfico de Dona
+                    total_monto_canal = df_pie['Monto'].sum()
+                    if total_monto_canal > 0:
+                        df_pie['Porcentaje_Num'] = (df_pie['Monto'] / total_monto_canal) * 100
+                        df_pie['Porcentaje_Texto'] = df_pie['Porcentaje_Num'].apply(lambda x: f"{x:.1f}%")
+                        df_pie['Canal_Con_Pct'] = df_pie['TIPO'] + " (" + df_pie['Porcentaje_Texto'] + ")"
+                    else:
+                        df_pie['Porcentaje_Num'] = 0
+                        df_pie['Porcentaje_Texto'] = "0%"
+                        df_pie['Canal_Con_Pct'] = df_pie['TIPO'] + " (0%)"
+
+                    # Gráfico de Torta / Dona mostrando únicamente Porcentajes (%)
                     chart_donut = alt.Chart(df_pie).mark_arc(innerRadius=70, outerRadius=110, stroke='#FFFFFF', strokeWidth=2).encode(
                         theta=alt.Theta(field="Monto", type="quantitative"),
                         color=alt.Color(
-                            field="TIPO", 
+                            field="Canal_Con_Pct", 
                             type="nominal", 
-                            scale=alt.Scale(domain=color_domain, range=color_range), 
-                            legend=alt.Legend(title="Canal", orient="bottom")
+                            scale=alt.Scale(
+                                domain=list(df_pie['Canal_Con_Pct']), 
+                                range=color_range[:len(df_pie)]
+                            ), 
+                            legend=alt.Legend(title="Canal y Participación", orient="bottom")
                         ),
-                        tooltip=['TIPO', alt.Tooltip('Monto', format="$,.2f", title="Monto Total"), 'Cantidad']
+                        tooltip=[
+                            alt.Tooltip('TIPO', title="Canal"), 
+                            alt.Tooltip('Porcentaje_Texto', title="Porcentaje (%)"), 
+                            alt.Tooltip('Monto', format="$,.2f", title="Monto Total"), 
+                            'Cantidad'
+                        ]
                     ).properties(height=320).configure_view(strokeWidth=0)
                     
                     st.altair_chart(chart_donut, use_container_width=True)
@@ -746,7 +765,6 @@ else:
                 with col_chart2:
                     st.markdown("#### 📋 Resumen Analítico por Canal")
                     
-                    # Generamos una tabla clara y formal en lugar del Top 10 si este desordena
                     df_resumen_canal = df_ext_gen.groupby('TIPO').agg(
                         Partidas=('VALOR_LIMPIO', 'count'),
                         Monto_Total=('VALOR_LIMPIO', 'sum')
@@ -767,7 +785,6 @@ else:
                         height=220
                     )
                     
-                    # Opción expandible para ver el Top 10 ordenado correctamente si el usuario desea consultarlo
                     with st.expander("🔍 Ver Top 10 Puntos de Venta (Mayor Recaudo)"):
                         df_top = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP').agg(
                             Recaudo=('VALOR_LIMPIO', 'sum')
