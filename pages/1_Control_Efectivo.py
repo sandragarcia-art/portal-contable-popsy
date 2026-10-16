@@ -621,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v40")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v41")
         
         if uploaded_multicash_gen:
             try:
@@ -634,7 +634,7 @@ else:
                 cols_lower = [str(c).lower() for c in df_ext_gen.columns]
                 col_val_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
                 
-                # FORZAMOS VALOR ABSOLUTO PARA QUE NO QUEDEN NEGATIVOS
+                # VALOR ABSOLUTO PARA EVITAR MONTOS NEGATIVOS
                 df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0).abs() if col_val_gen else 0.0
                 col_ref_gen = df_ext_gen.columns[min(9, len(df_ext_gen.columns) - 1)]
                 
@@ -716,75 +716,67 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DASHBOARD VISUALIZACIÓN GRÁFICA CLARA Y ORDENADA ---
+                # --- DASHBOARD VISUALIZACIÓN GRÁFICA ---
                 col_chart1, col_chart2 = st.columns(2)
+                
+                color_domain = ['Consignaciones', 'Datafonos', 'POR IDENTIFICAR', 'QR']
+                color_range = ['#111827', '#059669', '#C2185B', '#D97706']
 
                 with col_chart1:
-                    st.markdown("#### 📊 Distribución de Recaudo por Canal")
+                    st.markdown("#### 🍩 Distribución de Recaudo por Canal")
                     df_pie = df_ext_gen.groupby('TIPO').agg(
                         Monto=('VALOR_LIMPIO', 'sum'),
                         Cantidad=('VALOR_LIMPIO', 'count')
-                    ).reset_index().sort_values(by='Monto', ascending=False)
+                    ).reset_index()
                     
-                    # Gráfico de barras horizontales claro y 100% entendible para la distribución por canal
-                    chart_canales = alt.Chart(df_pie).mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6, color='#111827').encode(
-                        x=alt.X('Monto:Q', title=None, axis=alt.Axis(format="$,s", grid=False)),
-                        y=alt.Y('TIPO:N', sort='-x', title=None, axis=alt.Axis(labelLimit=150)),
+                    # Gráfico de Dona
+                    chart_donut = alt.Chart(df_pie).mark_arc(innerRadius=70, outerRadius=110, stroke='#FFFFFF', strokeWidth=2).encode(
+                        theta=alt.Theta(field="Monto", type="quantitative"),
+                        color=alt.Color(
+                            field="TIPO", 
+                            type="nominal", 
+                            scale=alt.Scale(domain=color_domain, range=color_range), 
+                            legend=alt.Legend(title="Canal", orient="bottom")
+                        ),
                         tooltip=['TIPO', alt.Tooltip('Monto', format="$,.2f", title="Monto Total"), 'Cantidad']
                     ).properties(height=320).configure_view(strokeWidth=0)
                     
-                    st.altair_chart(chart_canales, use_container_width=True)
+                    st.altair_chart(chart_donut, use_container_width=True)
 
                 with col_chart2:
-                    st.markdown("#### 🏆 Top 10 Puntos de Venta (Mayor Recaudo)")
+                    st.markdown("#### 📋 Resumen Analítico por Canal")
                     
-                    # Agrupamos y ordenamos estrictamente de mayor a menor en positivo
-                    df_top = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP').agg(
-                        Recaudo=('VALOR_LIMPIO', 'sum')
+                    # Generamos una tabla clara y formal en lugar del Top 10 si este desordena
+                    df_resumen_canal = df_ext_gen.groupby('TIPO').agg(
+                        Partidas=('VALOR_LIMPIO', 'count'),
+                        Monto_Total=('VALOR_LIMPIO', 'sum')
                     ).reset_index()
                     
-                    df_top = df_top.sort_values(by='Recaudo', ascending=False).head(10).reset_index(drop=True)
-                    
-                    if len(df_top) > 0:
-                        max_recaudo = df_top['Recaudo'].max()
-                        df_top['EsTop1'] = df_top['Recaudo'] == max_recaudo
-                        
-                        bars = alt.Chart(df_top).mark_bar(
-                            cornerRadiusTopRight=6, 
-                            cornerRadiusBottomRight=6
-                        ).encode(
-                            x=alt.X('Recaudo:Q', title=None, axis=alt.Axis(format="$,s", grid=False)),
-                            y=alt.Y(
-                                'PDV_SAP:N', 
-                                sort=alt.EncodingSortField(field="Recaudo", order="descending"), 
-                                title=None, 
-                                axis=alt.Axis(labelLimit=220)
-                            ),
-                            color=alt.Color(
-                                'EsTop1:N',
-                                scale=alt.Scale(domain=[True, False], range=['#6b1d3f', '#E91E63']),
-                                legend=None
-                            ),
-                            tooltip=['PDV_SAP', alt.Tooltip('Recaudo', format="$,.2f", title="Recaudo Total")]
-                        )
-                        
-                        text = alt.Chart(df_top).mark_text(
-                            align='left',
-                            baseline='middle',
-                            dx=6,
-                            fontSize=11,
-                            fontWeight='bold',
-                            color='#4B5563'
-                        ).encode(
-                            x=alt.X('Recaudo:Q'),
-                            y=alt.Y('PDV_SAP:N', sort=alt.EncodingSortField(field="Recaudo", order="descending")),
-                            text=alt.Text('Recaudo:Q', format="$,.0f")
-                        )
-                        
-                        chart_top10 = (bars + text).properties(height=320).configure_view(strokeWidth=0)
-                        st.altair_chart(chart_top10, use_container_width=True)
+                    monto_global = df_resumen_canal['Monto_Total'].sum()
+                    if monto_global > 0:
+                        df_resumen_canal['% Participación'] = (df_resumen_canal['Monto_Total'] / monto_global * 100).round(2).astype(str) + '%'
                     else:
-                        st.info("No hay suficientes datos de PDV SAP identificados para mostrar el Top 10.")
+                        df_resumen_canal['% Participación'] = '0%'
+
+                    df_resumen_canal['Monto Total'] = df_resumen_canal['Monto_Total'].apply(lambda x: f"${x:,.2f}")
+                    df_resumen_canal = df_resumen_canal.rename(columns={'TIPO': 'Canal de Recaudo'})
+                    
+                    st.dataframe(
+                        df_resumen_canal[['Canal de Recaudo', 'Partidas', 'Monto Total', '% Participación']],
+                        use_container_width=True,
+                        height=220
+                    )
+                    
+                    # Opción expandible para ver el Top 10 ordenado correctamente si el usuario desea consultarlo
+                    with st.expander("🔍 Ver Top 10 Puntos de Venta (Mayor Recaudo)"):
+                        df_top = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP').agg(
+                            Recaudo=('VALOR_LIMPIO', 'sum')
+                        ).reset_index()
+                        
+                        df_top = df_top.sort_values(by='Recaudo', ascending=False).head(10).reset_index(drop=True)
+                        df_top['Monto Recaudado'] = df_top['Recaudo'].apply(lambda x: f"${x:,.2f}")
+                        df_top = df_top.rename(columns={'PDV_SAP': 'Punto de Venta / Tienda SAP'})
+                        st.dataframe(df_top[['Punto de Venta / Tienda SAP', 'Monto Recaudado']], use_container_width=True)
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
