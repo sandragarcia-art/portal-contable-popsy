@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime
 import os
 import altair as alt
+from io import BytesIO
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -137,6 +138,10 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# --- INICIALIZACIÓN DE HISTÓRICO EN SESSION STATE ---
+if "historico_cierres" not in st.session_state:
+    st.session_state.historico_cierres = []
 
 # --- VALIDACIÓN DE SESIÓN Y REDIRECCIÓN AUTOMÁTICA ---
 if "autenticado" not in st.session_state or not st.session_state.autenticado:
@@ -621,7 +626,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v45")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v46")
         
         if uploaded_multicash_gen:
             try:
@@ -662,6 +667,11 @@ else:
                 df_d_gen = df_ext_gen[df_ext_gen['TIPO'] == 'Datafonos']
                 df_q_gen = df_ext_gen[df_ext_gen['TIPO'] == 'QR'] if maneja_qr else pd.DataFrame()
                 df_p_gen = df_ext_gen[df_ext_gen['TIPO'] == 'POR IDENTIFICAR']
+
+                # --- VALIDADOR DE TIENDAS / CENTROS DE BENEFICIO (MEJORA PRO) ---
+                tiendas_sin_cb = df_ext_gen[(df_ext_gen['TIPO'] != 'POR IDENTIFICAR') & (df_ext_gen['CB_SAP'] == '')]
+                if len(tiendas_sin_cb) > 0:
+                    st.warning(f"⚠️ **Alerta de Interfaz SAP:** Se detectaron {len(tiendas_sin_cb)} registros tipificados pero sin Centro de Beneficio (CB) asignado en la base maestra. Revisa la parametrización para evitar rechazos en SAP.")
                 
                 st.markdown("#### 📊 Diagnóstico General del Extracto")
                 c1, c2, c3, c4, c5 = st.columns(5)
@@ -718,7 +728,7 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- SECCIÓN VISUAL SUPERIOR: CUENTAS BANCARIAS Y GRÁFICA DE EDADES ---
+                # --- SECCIÓN VISUAL SUPERIOR: CUENTAS BANCARIAS Y GRÁFICA DE EDADES CON SEMÁFORO ---
                 col_chart1, col_chart2 = st.columns(2)
 
                 # 1. LADO IZQUIERDO: RECAUDO POR CUENTA BANCARIA
@@ -745,9 +755,9 @@ else:
                         height=280
                     )
 
-                # 2. LADO DERECHO: GRÁFICA BONITA DE EDADES DE PARTIDAS POR IDENTIFICAR
+                # 2. LADO DERECHO: EDADES DE CARTERA CON SEMÁFORO VISUAL
                 with col_chart2:
-                    st.markdown("#### ⏳ Partidas Por Identificar por Edades")
+                    st.markdown("#### ⏳ Partidas Por Identificar por Edades (Semáforo)")
                     
                     if len(df_p_gen) > 0:
                         df_pi_edades = df_p_gen.copy()
@@ -759,33 +769,40 @@ else:
                         else:
                             df_pi_edades['DIAS_ANTIGUEDAD'] = 15
                             
-                        def categorizar_edad(dias):
+                        def categorizar_edad_semaforo(dias):
                             if dias <= 30:
-                                return '01. 0 a 30 días'
+                                return '🟢 01. 0 a 30 días (Al Día)'
                             elif dias <= 60:
-                                return '02. 31 a 60 días'
+                                return '🟡 02. 31 a 60 días (Seguimiento)'
                             elif dias <= 90:
-                                return '03. 61 a 90 días'
+                                return '🟠 03. 61 a 90 días (Crítico)'
                             else:
-                                return '04. Más de 90 días'
+                                return '🔴 04. Más de 90 días (Alerta Roja)'
                                 
-                        df_pi_edades['RANGO_EDAD'] = df_pi_edades['DIAS_ANTIGUEDAD'].apply(categorizar_edad)
+                        df_pi_edades['RANGO_EDAD'] = df_pi_edades['DIAS_ANTIGUEDAD'].apply(categorizar_edad_semaforo)
                         
                         df_edades_resumen = df_pi_edades.groupby('RANGO_EDAD').agg(
                             Partidas=('VALOR_LIMPIO', 'count'),
                             Monto_Total=('VALOR_LIMPIO', 'sum')
                         ).reset_index().sort_values(by='RANGO_EDAD')
                         
-                        # Gráfica de barras horizontales estilizada en Altair
+                        # Mapeo de colores para el semáforo en Altair
                         bars_edades = alt.Chart(df_edades_resumen).mark_bar(
                             cornerRadiusTopRight=6, 
-                            cornerRadiusBottomRight=6,
-                            color='#C2185B'
+                            cornerRadiusBottomRight=6
                         ).encode(
                             x=alt.X('Monto_Total:Q', title=None, axis=alt.Axis(format="$,s", grid=False)),
                             y=alt.Y('RANGO_EDAD:N', title=None, sort=alt.EncodingSortField(field="RANGO_EDAD", order="ascending")),
+                            color=alt.Color(
+                                'RANGO_EDAD:N',
+                                scale=alt.Scale(
+                                    domain=['🟢 01. 0 a 30 días (Al Día)', '🟡 02. 31 a 60 días (Seguimiento)', '🟠 03. 61 a 90 días (Crítico)', '🔴 04. Más de 90 días (Alerta Roja)'],
+                                    range=['#10B981', '#F59E0B', '#EF4444', '#991B1B']
+                                ),
+                                legend=None
+                            ),
                             tooltip=[
-                                alt.Tooltip('RANGO_EDAD', title="Antigüedad"),
+                                alt.Tooltip('RANGO_EDAD', title="Rango Antigüedad"),
                                 alt.Tooltip('Partidas', title="Cantidad Partidas"),
                                 alt.Tooltip('Monto_Total', format="$,.2f", title="Monto Total")
                             ]
@@ -808,6 +825,53 @@ else:
                         st.altair_chart(chart_edades, use_container_width=True)
                     else:
                         st.success("🎉 ¡Excelente! No hay partidas pendientes por identificar en este extracto.")
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # --- MÓDULO DE HISTÓRICO DE CIERRES Y REPORTE EJECUTIVO (MEJORA PRO) ---
+                col_acc1, col_acc2 = st.columns(2)
+                
+                with col_acc1:
+                    if st.button("💾 Guardar Cierre Actual en Histórico Mes a Mes", use_container_width=True):
+                        registro_cierre = {
+                            'Fecha Cierre': datetime.now().strftime('%Y-%m-%d %H:%M'),
+                            'Sociedad': sociedad_seleccionada,
+                            'Total Registros': tot_reg,
+                            'Monto Total': tot_monto,
+                            'Partidas Pendientes': len(df_p_gen),
+                            'Monto Pendiente': df_p_gen['VALOR_LIMPIO'].sum() if len(df_p_gen) > 0 else 0
+                        }
+                        st.session_state.historico_cierres.append(registro_cierre)
+                        st.success("✅ ¡Cierre guardado con éxito en el histórico de la sesión!")
+
+                with col_acc2:
+                    # Generador de TXT ejecutivo para reporte rápido o anexo
+                    texto_reporte = f"""REPORTE EJECUTIVO DE CIERRE - CONTROL EFECTIVO POPSY
+Sociedad: {sociedad_seleccionada}
+Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+--------------------------------------------------
+Total Registros Extracto: {tot_reg}
+Monto Total Recaudado: ${tot_monto:,.2f}
+Consignaciones: {len(df_c_gen)} part. (${df_c_gen['VALOR_LIMPIO'].sum():,.2f})
+Datáfonos: {len(df_d_gen)} part. (${df_d_gen['VALOR_LIMPIO'].sum():,.2f})
+Partidas Por Identificar: {len(df_p_gen)} part. (${df_p_gen['VALOR_LIMPIO'].sum():,.2f})
+--------------------------------------------------
+Generado por Colaborador Popsy - Sistema Automático SAP
+"""
+                    st.download_button(
+                        label="📄 Descargar Reporte Ejecutivo de Cierre (.txt)",
+                        data=texto_reporte.encode('utf-8-sig'),
+                        file_name=f"Reporte_Cierre_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d')}.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+
+                # Mostrar historial si hay registros guardados
+                if len(st.session_state.historico_cierres) > 0:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    with st.expander("📈 Ver Histórico de Cierres Guardados en Sesión"):
+                        df_hist = pd.DataFrame(st.session_state.historico_cierres)
+                        st.dataframe(df_hist, use_container_width=True)
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
