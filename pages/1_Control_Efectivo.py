@@ -621,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v43")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v44")
         
         if uploaded_multicash_gen:
             try:
@@ -634,6 +634,7 @@ else:
                 cols_lower = [str(c).lower() for c in df_ext_gen.columns]
                 col_val_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'valor' in c or 'monto' in c or 'importe' in c or 'neto' in c), None)
                 col_cta_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'cta' in c or 'banco' in c), df_ext_gen.columns[1] if len(df_ext_gen.columns) > 1 else 'Cuenta')
+                col_fec_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'fecha' in c or 'date' in c), None)
                 
                 # VALOR ABSOLUTO
                 df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0).abs() if col_val_gen else 0.0
@@ -717,7 +718,7 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- NUEVA SECCIÓN DE ANÁLISIS: CUENTAS BANCARIAS Y TOP 10 PENDIENTES ---
+                # --- SECCIÓN VISUAL SUPERIOR: CUENTAS BANCARIAS Y EDADES DE CARTERA (PI) ---
                 col_chart1, col_chart2 = st.columns(2)
 
                 # 1. LADO IZQUIERDO: RECAUDO POR CUENTA BANCARIA
@@ -744,54 +745,46 @@ else:
                         height=280
                     )
 
-                # 2. LADO DERECHO: TOP 10 PARTIDAS POR IDENTIFICAR DE MAYOR VALOR
+                # 2. LADO DERECHO: PARTIDAS POR IDENTIFICAR POR EDADES (ANTIGÜEDAD)
                 with col_chart2:
-                    st.markdown("#### ⚠️ Top 10 Partidas Por Identificar (Mayores Valores)")
+                    st.markdown("#### ⏳ Partidas Por Identificar por Edades")
                     
                     if len(df_p_gen) > 0:
-                        # Creamos una columna concisa con la referencia y número de renglón
-                        df_p_top = df_p_gen.copy()
-                        df_p_top['REF_ETIQUETA'] = df_p_top[col_ref_gen].astype(str).str.strip().str[:28]
+                        df_pi_edades = df_p_gen.copy()
                         
-                        df_p_top = df_p_top.sort_values(by='VALOR_LIMPIO', ascending=False).head(10).reset_index(drop=True)
+                        # Cálculo de días de antigüedad
+                        if col_fec_gen:
+                            fec_series = pd.to_datetime(df_pi_edades[col_fec_gen], errors='coerce')
+                            hoy_dt = pd.Timestamp(datetime.now())
+                            df_pi_edades['DIAS_ANTIGUEDAD'] = (hoy_dt - fec_series).dt.days.fillna(0).astype(int)
+                        else:
+                            df_pi_edades['DIAS_ANTIGUEDAD'] = 15 # Valor por defecto si no hay columna de fecha explícita
+                            
+                        def categorizar_edad(dias):
+                            if dias <= 30:
+                                return '1. 0 a 30 días'
+                            elif dias <= 60:
+                                return '2. 31 a 60 días'
+                            elif dias <= 90:
+                                return '3. 61 a 90 días'
+                            else:
+                                return '4. Más de 90 días'
+                                
+                        df_pi_edades['RANGO_EDAD'] = df_pi_edades['DIAS_ANTIGUEDAD'].apply(categorizar_edad)
                         
-                        max_pi_val = df_p_top['VALOR_LIMPIO'].max()
-                        df_p_top['EsTop1'] = df_p_top['VALOR_LIMPIO'] == max_pi_val
+                        df_edades_resumen = df_pi_edades.groupby('RANGO_EDAD').agg(
+                            Cantidad=('VALOR_LIMPIO', 'count'),
+                            Monto_Total=('VALOR_LIMPIO', 'sum')
+                        ).reset_index().sort_values(by='RANGO_EDAD')
                         
-                        bars_pi = alt.Chart(df_p_top).mark_bar(
-                            cornerRadiusTopRight=6, 
-                            cornerRadiusBottomRight=6
-                        ).encode(
-                            x=alt.X('VALOR_LIMPIO:Q', title=None, axis=alt.Axis(format="$,s", grid=False)),
-                            y=alt.Y(
-                                'REF_ETIQUETA:N', 
-                                sort=alt.EncodingSortField(field="VALOR_LIMPIO", order="descending"), 
-                                title=None, 
-                                axis=alt.Axis(labelLimit=220)
-                            ),
-                            color=alt.Color(
-                                'EsTop1:N',
-                                scale=alt.Scale(domain=[True, False], range=['#6b1d3f', '#DC2626']),
-                                legend=None
-                            ),
-                            tooltip=['REF_ETIQUETA', alt.Tooltip('VALOR_LIMPIO', format="$,.2f", title="Valor Pendiente")]
+                        df_edades_resumen['Monto Pendiente'] = df_edades_resumen['Monto_Total'].apply(lambda x: f"${x:,.2f}")
+                        df_edades_resumen = df_edades_resumen.rename(columns={'RANGO_EDAD': 'Rango de Antigüedad', 'Cantidad': 'Partidas'})
+                        
+                        st.dataframe(
+                            df_edades_resumen[['Rango de Antigüedad', 'Partidas', 'Monto Pendiente']],
+                            use_container_width=True,
+                            height=280
                         )
-                        
-                        text_pi = alt.Chart(df_p_top).mark_text(
-                            align='left',
-                            baseline='middle',
-                            dx=6,
-                            fontSize=11,
-                            fontWeight='bold',
-                            color='#4B5563'
-                        ).encode(
-                            x=alt.X('VALOR_LIMPIO:Q'),
-                            y=alt.Y('REF_ETIQUETA:N', sort=alt.EncodingSortField(field="VALOR_LIMPIO", order="descending")),
-                            text=alt.Text('VALOR_LIMPIO:Q', format="$,.0f")
-                        )
-                        
-                        chart_top_pi = (bars_pi + text_pi).properties(height=280).configure_view(strokeWidth=0)
-                        st.altair_chart(chart_top_pi, use_container_width=True)
                     else:
                         st.success("🎉 ¡Excelente! No hay partidas pendientes por identificar en este extracto.")
 
@@ -1105,7 +1098,7 @@ else:
         # --- MÓDULO 4: PAYMENTS WAY ---
         with tab_pw:
             st.markdown(f"### 🚀 Módulo Payments Way • {sociedad_seleccionada}")
-            st.markdown("Sube el **Archivo de Transacciones de Payments Way** para procesarlo con la matriz contable y generar automáticamente el Plano Multiusos SAP.")
+            st.markdown("Sube el **Archivo Plano de Payments Way** para procesarlo con la matriz contable y generar automáticamente el Plano Multiusos SAP.")
             
             uploaded_pw = st.file_uploader("Sube el Archivo de Payments Way", type=["xlsx", "XLSX", "xls", "csv"], key="up_pw_final")
             
