@@ -139,8 +139,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- GESTIÓN DE HISTÓRICO Y NOTAS EN SESIÓN Y EXCEL ---
+# --- GESTIÓN DE HISTÓRICO Y NOTAS PERMANENTES EN EXCEL ---
 ARCHIVO_HISTORICO = "historico_cierres.xlsx"
+ARCHIVO_NOTAS = "notas_partidas_auditadas.xlsx"
 
 def cargar_historico_excel():
     if os.path.exists(ARCHIVO_HISTORICO):
@@ -150,8 +151,20 @@ def cargar_historico_excel():
             return []
     return []
 
-if "notas_partidas" not in st.session_state:
-    st.session_state.notas_partidas = {}
+def cargar_notas_excel():
+    if os.path.exists(ARCHIVO_NOTAS):
+        try:
+            df_n = pd.read_excel(ARCHIVO_NOTAS)
+            return dict(zip(df_n['Referencia'].astype(str), df_n['Nota']))
+        except:
+            return {}
+    return {}
+
+def guardar_nota_excel(referencia, texto_nota):
+    notas_dict = cargar_notas_excel()
+    notas_dict[str(referencia)] = texto_nota
+    df_n = pd.DataFrame(list(notas_dict.items()), columns=['Referencia', 'Nota'])
+    df_n.to_excel(ARCHIVO_NOTAS, index=False)
 
 # --- VALIDACIÓN DE SESIÓN Y REDIRECCIÓN AUTOMÁTICA ---
 if "autenticado" not in st.session_state or not st.session_state.autenticado:
@@ -664,7 +677,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v48")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v49")
         
         if uploaded_multicash_gen:
             try:
@@ -911,7 +924,7 @@ Generado por Colaborador Popsy - Sistema Automático SAP
                         use_container_width=True
                     )
 
-                # GRÁFICA DE TENDENCIA LEYENDO DESDE EXCEL
+                # GRÁFICA DE TENDENCIA LEYENDO DESDE EXCEL PERMANENTE
                 lista_hist_actual = cargar_historico_excel()
                 if len(lista_hist_actual) > 0:
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -931,14 +944,13 @@ Generado por Colaborador Popsy - Sistema Automático SAP
                                 tooltip=['Fecha Cierre', 'Monto Pendiente', 'Partidas Pendientes']
                             ).properties(height=240, title="Evolución de Partidas Por Identificar")
                             
-                            c_h1, c_h2 = alt.hconcat() # o usar columnas de streamlit
                             c_h1, c_h2 = st.columns(2)
                             with c_h1:
                                 st.altair_chart(line_monto, use_container_width=True)
                             with c_h2:
                                 st.altair_chart(line_pi, use_container_width=True)
                         else:
-                            st.info("ℹ️ Tienes 1 cierre guardado. Las gráficas de tendencia se activarán automáticamente cuando guardes un segundo cierre.")
+                            st.info("ℹ️ Tienes 1 cierre guardado en Excel. Las gráficas de tendencia se activarán automáticamente cuando guardes un segundo cierre.")
 
                         st.markdown("#### 📋 Registro Detallado de Cierres Guardados")
                         st.dataframe(df_hist, use_container_width=True)
@@ -948,6 +960,7 @@ Generado por Colaborador Popsy - Sistema Automático SAP
                 st.markdown("#### 📋 Detalle del Extracto General")
                 st.dataframe(df_ext_gen, use_container_width=True)
 
+                # BITÁCORA Y COMENTARIOS DE AUDITORÍA CON ALMACENAMIENTO PERMANENTE
                 if len(df_p_gen) > 0:
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown("#### ⚠️ Partidas Por Identificar & Bitácora de Auditoría")
@@ -960,7 +973,8 @@ Generado por Colaborador Popsy - Sistema Automático SAP
                     else:
                         df_p_view = df_p_gen.copy()
 
-                    df_p_view['Notas Auditoría'] = [st.session_state.notas_partidas.get(str(r), '') for r in df_p_view[col_ref_gen]]
+                    dict_notas = cargar_notas_excel()
+                    df_p_view['Notas Auditoría'] = [dict_notas.get(str(r), '') for r in df_p_view[col_ref_gen]]
                     st.dataframe(df_p_view, use_container_width=True)
                     
                     with st.expander("💬 Registrar / Actualizar Nota de Auditoría sobre Partida Pendiente"):
@@ -968,12 +982,12 @@ Generado por Colaborador Popsy - Sistema Automático SAP
                         with c_n1:
                             ref_nota_select = st.selectbox("Selecciona la Referencia:", df_p_view[col_ref_gen].astype(str).unique())
                         with c_n2:
-                            texto_nota_input = st.text_input("Ingresa el comentario de seguimiento:")
+                            texto_nota_input = st.text_input("Ingresa el comentario de seguimiento (ej. 'Se solicitó soporte a tienda el 16/10'):")
                             
                         if st.button("Guardar Nota de Auditoría"):
                             if ref_nota_select and texto_nota_input:
-                                st.session_state.notas_partidas[str(ref_nota_select)] = texto_nota_input
-                                st.success(f"✅ Nota registrada correctamente para la referencia {ref_nota_select}")
+                                guardar_nota_excel(ref_nota_select, texto_nota_input)
+                                st.success(f"✅ Nota registrada permanentemente en Excel para la referencia {ref_nota_select}")
                                 st.rerun()
 
                     csv_pi = df_p_view.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
