@@ -513,7 +513,7 @@ else:
         }
 
         for idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
-            comercio_val = str(row.get('REFERENCIA', row.get('COMERCIO', idx))).strip()
+            comercio_val = str(row.get('REFERENCIA', row.get('COMERCIO', ''))).strip()
             
             fecha_doc = fecha_hoy
             val_fec = row.get('FECHA', row.get('FECHA DE PAGO', None))
@@ -621,7 +621,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v38")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v39")
         
         if uploaded_multicash_gen:
             try:
@@ -715,7 +715,7 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- DASHBOARD VISUALIZACIÓN GRÁFICA IDÉNTICA A TU CAPTURA ---
+                # --- DASHBOARD VISUALIZACIÓN GRÁFICA ---
                 col_chart1, col_chart2 = st.columns(2)
                 
                 color_domain = ['Consignaciones', 'Datafonos', 'POR IDENTIFICAR', 'QR']
@@ -728,7 +728,6 @@ else:
                         Cantidad=('VALOR_LIMPIO', 'count')
                     ).reset_index()
                     
-                    # Gráfico de dona limpio con leyenda inferior, tal cual tu diseño original
                     chart_donut = alt.Chart(df_pie).mark_arc(innerRadius=70, outerRadius=110, stroke='#FFFFFF', strokeWidth=2).encode(
                         theta=alt.Theta(field="Monto", type="quantitative"),
                         color=alt.Color(
@@ -744,19 +743,29 @@ else:
 
                 with col_chart2:
                     st.markdown("#### 🏆 Top 10 Puntos de Venta (Mayor Recaudo)")
+                    
+                    # Agrupamos y ordenamos estrictamente de mayor a menor
                     df_top = df_ext_gen[df_ext_gen['PDV_SAP'] != ''].groupby('PDV_SAP').agg(
                         Recaudo=('VALOR_LIMPIO', 'sum')
-                    ).reset_index().nlargest(10, 'Recaudo')
+                    ).reset_index()
+                    
+                    df_top = df_top.sort_values(by='Recaudo', ascending=False).head(10).reset_index(drop=True)
                     
                     if len(df_top) > 0:
-                        df_top['EsTop1'] = df_top['Recaudo'] == df_top['Recaudo'].max()
+                        max_recaudo = df_top['Recaudo'].max()
+                        df_top['EsTop1'] = df_top['Recaudo'] == max_recaudo
                         
                         bars = alt.Chart(df_top).mark_bar(
                             cornerRadiusTopRight=6, 
                             cornerRadiusBottomRight=6
                         ).encode(
                             x=alt.X('Recaudo:Q', title=None, axis=alt.Axis(format="$,s", grid=False)),
-                            y=alt.Y('PDV_SAP:N', sort='-x', title=None, axis=alt.Axis(labelLimit=220)),
+                            y=alt.Y(
+                                'PDV_SAP:N', 
+                                sort=alt.EncodingSortField(field="Recaudo", order="descending"), 
+                                title=None, 
+                                axis=alt.Axis(labelLimit=220)
+                            ),
                             color=alt.Color(
                                 'EsTop1:N',
                                 scale=alt.Scale(domain=[True, False], range=['#6b1d3f', '#E91E63']),
@@ -774,7 +783,7 @@ else:
                             color='#4B5563'
                         ).encode(
                             x=alt.X('Recaudo:Q'),
-                            y=alt.Y('PDV_SAP:N', sort='-x'),
+                            y=alt.Y('PDV_SAP:N', sort=alt.EncodingSortField(field="Recaudo", order="descending")),
                             text=alt.Text('Recaudo:Q', format="$,.0f")
                         )
                         
