@@ -139,9 +139,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- INICIALIZACIÓN DE VARIABLES EN SESSION STATE ---
-if "historico_cierres" not in st.session_state:
-    st.session_state.historico_cierres = []
+# --- GESTIÓN DE HISTÓRICO Y NOTAS EN SESIÓN Y EXCEL ---
+ARCHIVO_HISTORICO = "historico_cierres.xlsx"
+
+def cargar_historico_excel():
+    if os.path.exists(ARCHIVO_HISTORICO):
+        try:
+            return pd.read_excel(ARCHIVO_HISTORICO).to_dict('records')
+        except:
+            return []
+    return []
 
 if "notas_partidas" not in st.session_state:
     st.session_state.notas_partidas = {}
@@ -206,7 +213,7 @@ else:
     else:
         codigo_sociedad = None
 
-    # MEJORA PRO 4: ACTUALIZADOR DE BASES MAESTRAS EN EL SIDEBAR
+    # ACTUALIZADOR DE BASES MAESTRAS EN EL SIDEBAR
     st.sidebar.markdown("---")
     st.sidebar.markdown("### ⚙️ Gestión de Maestros")
     with st.sidebar.expander("📂 Cargar / Actualizar Maestros"):
@@ -601,17 +608,13 @@ else:
             
         return pd.DataFrame(filas)[columnas_multiusos]
 
-    # MEJORA PRO 2: EXPORTADOR MULTI-PESTAÑA A EXCEL
+    # EXPORTADOR MULTI-PESTAÑA A EXCEL
     def generar_excel_multipestana(df_resumen_gen, df_cuentas, df_pi_edades, df_pi_full):
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Pestaña 1: Resumen Cuentas
             df_cuentas.to_excel(writer, sheet_name='Recaudo x Cuenta', index=False)
-            # Pestaña 2: Edades Partidas PI
             df_pi_edades.to_excel(writer, sheet_name='Edades Pendientes', index=False)
-            # Pestaña 3: Detalle Partidas por Identificar
             df_pi_full.to_excel(writer, sheet_name='Partidas Por Identificar', index=False)
-            # Pestaña 4: Extracto Base Completo
             df_resumen_gen.to_excel(writer, sheet_name='Extracto Base', index=False)
         return output.getvalue()
 
@@ -625,7 +628,6 @@ else:
     elif not os.path.exists(nombre_archivo_comercios):
         st.error(f"⚠️ No se encontró el archivo '{nombre_archivo_comercios}' en la raíz del repositorio.")
     else:
-        # Cargar bases de referencia específicas de la sociedad
         df_base_tiendas = pd.read_excel(nombre_archivo_base, sheet_name='Hoja1')
         df_base_tiendas.columns = [str(c).strip().upper() for c in df_base_tiendas.columns]
         df_base_tiendas['TEXTO_CLEAN'] = df_base_tiendas['TEXTO MULTICAHS'].astype(str).str.strip().str.upper()
@@ -638,11 +640,9 @@ else:
                 'tipificacion': r.get('TIPIFICACION', '')
             }
 
-        # Cargar matriz de datáfonos específica de la sociedad
         df_matriz_dtf = pd.read_excel(nombre_archivo_matriz_dtf)
         df_matriz_dtf.columns = [str(c).strip().upper() for c in df_matriz_dtf.columns]
 
-        # Cargar maestro de comercios de datáfonos específico de la sociedad
         df_comercios_dtf = pd.read_excel(nombre_archivo_comercios)
         df_comercios_dtf.columns = [str(c).strip().upper() for c in df_comercios_dtf.columns]
         
@@ -664,7 +664,7 @@ else:
         # 1. CARGA DEL EXTRACTO GENERAL Y RESUMEN
         # ==========================================
         st.markdown(f"### 📥 Carga de Multicash / Extracto Bancario General • {sociedad_seleccionada}")
-        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v47")
+        uploaded_multicash_gen = st.file_uploader("Sube el Extracto Multicash General para Diagnóstico y Resumen", type=["xlsx", "XLSX", "xls", "csv"], key="up_gen_global_v48")
         
         if uploaded_multicash_gen:
             try:
@@ -679,7 +679,6 @@ else:
                 col_cta_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'cuenta' in c or 'cta' in c or 'banco' in c), df_ext_gen.columns[1] if len(df_ext_gen.columns) > 1 else 'Cuenta')
                 col_fec_gen = next((df_ext_gen.columns[i] for i, c in enumerate(cols_lower) if 'fecha' in c or 'date' in c), None)
                 
-                # VALOR ABSOLUTO
                 df_ext_gen['VALOR_LIMPIO'] = pd.to_numeric(df_ext_gen[col_val_gen], errors='coerce').fillna(0).abs() if col_val_gen else 0.0
                 col_ref_gen = df_ext_gen.columns[min(9, len(df_ext_gen.columns) - 1)]
                 
@@ -706,7 +705,6 @@ else:
                 df_q_gen = df_ext_gen[df_ext_gen['TIPO'] == 'QR'] if maneja_qr else pd.DataFrame()
                 df_p_gen = df_ext_gen[df_ext_gen['TIPO'] == 'POR IDENTIFICAR']
 
-                # VALIDADOR DE INTERFAZ SAP
                 tiendas_sin_cb = df_ext_gen[(df_ext_gen['TIPO'] != 'POR IDENTIFICAR') & (df_ext_gen['CB_SAP'] == '')]
                 if len(tiendas_sin_cb) > 0:
                     st.warning(f"⚠️ **Alerta Interfaz SAP:** Se detectaron {len(tiendas_sin_cb)} registros tipificados sin Centro de Beneficio (CB). Revisa la parametrización para prevenir errores en SAP.")
@@ -766,10 +764,8 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- SECCIÓN VISUAL SUPERIOR ---
                 col_chart1, col_chart2 = st.columns(2)
 
-                # 1. RECAUDO POR CUENTA BANCARIA
                 with col_chart1:
                     st.markdown("#### 🏦 Recaudo por Cuenta Bancaria")
                     df_ext_gen['CUENTA_MOSTRAR'] = df_ext_gen[col_cta_gen].astype(str).str.strip()
@@ -793,7 +789,6 @@ else:
                         height=280
                     )
 
-                # 2. EDADES CON SEMÁFORO VISUAL
                 with col_chart2:
                     st.markdown("#### ⏳ Partidas Por Identificar por Edades (Semáforo)")
                     
@@ -865,11 +860,10 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- MÓDULO DE ACCIONES PRO: HISTÓRICO, TENDENCIA Y EXCEL MULTI-PESTAÑA ---
                 col_acc1, col_acc2, col_acc3 = st.columns(3)
                 
                 with col_acc1:
-                    if st.button("💾 Guardar Cierre Actual en Histórico", use_container_width=True):
+                    if st.button("💾 Guardar Cierre en Archivo Histórico", use_container_width=True):
                         registro_cierre = {
                             'Fecha Cierre': datetime.now().strftime('%Y-%m-%d %H:%M'),
                             'Sociedad': sociedad_seleccionada,
@@ -878,16 +872,18 @@ else:
                             'Partidas Pendientes': len(df_p_gen),
                             'Monto Pendiente': df_p_gen['VALOR_LIMPIO'].sum() if len(df_p_gen) > 0 else 0
                         }
-                        st.session_state.historico_cierres.append(registro_cierre)
-                        st.success("✅ ¡Cierre guardado en sesión!")
+                        lista_hist = cargar_historico_excel()
+                        lista_hist.append(registro_cierre)
+                        pd.DataFrame(lista_hist).to_excel(ARCHIVO_HISTORICO, index=False)
+                        st.success("✅ ¡Cierre guardado permanentemente en Excel!")
+                        st.rerun()
 
                 with col_acc2:
-                    # EXPORTACIÓN EXCEL PRO MULTI-PESTAÑA
                     df_pi_export = df_p_gen.copy() if len(df_p_gen) > 0 else pd.DataFrame({'Estado': ['Sin Pendientes']})
                     excel_bytes = generar_excel_multipestana(df_ext_gen, df_cuentas, df_edades_resumen if len(df_p_gen) > 0 else pd.DataFrame(), df_pi_export)
                     
                     st.download_button(
-                        label="📊 Descargar Informe Completo en Excel (.xlsx)",
+                        label="📊 Descargar Informe Excel (.xlsx)",
                         data=excel_bytes,
                         file_name=f"Informe_Consolidado_{codigo_sociedad}_{datetime.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -895,7 +891,6 @@ else:
                     )
 
                 with col_acc3:
-                    # REPORTE EJECUTIVO RÁPIDO
                     texto_reporte = f"""REPORTE EJECUTIVO DE CIERRE - CONTROL EFECTIVO POPSY
 Sociedad: {sociedad_seleccionada}
 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -916,39 +911,43 @@ Generado por Colaborador Popsy - Sistema Automático SAP
                         use_container_width=True
                     )
 
-                # MEJORA PRO 1: GRÁFICA DE TENDENCIA HISTÓRICA MES A MES
-                if len(st.session_state.historico_cierres) > 0:
+                # GRÁFICA DE TENDENCIA LEYENDO DESDE EXCEL
+                lista_hist_actual = cargar_historico_excel()
+                if len(lista_hist_actual) > 0:
                     st.markdown("<br>", unsafe_allow_html=True)
                     with st.expander("📈 Ver Histórico y Gráfica de Tendencia Comparativa"):
-                        df_hist = pd.DataFrame(st.session_state.historico_cierres)
+                        df_hist = pd.DataFrame(lista_hist_actual)
                         
-                        line_monto = alt.Chart(df_hist).mark_line(point=True, color='#C2185B').encode(
-                            x=alt.X('Fecha Cierre:N', title='Cierre'),
-                            y=alt.Y('Monto Total:Q', title='Monto Recaudado ($)'),
-                            tooltip=['Fecha Cierre', 'Sociedad', 'Monto Total', 'Partidas Pendientes']
-                        ).properties(height=220, title="Evolución del Recaudo Total")
-                        
-                        line_pi = alt.Chart(df_hist).mark_line(point=True, color='#DC2626').encode(
-                            x=alt.X('Fecha Cierre:N', title='Cierre'),
-                            y=alt.Y('Monto Pendiente:Q', title='Monto Pendiente ($)'),
-                            tooltip=['Fecha Cierre', 'Monto Pendiente', 'Partidas Pendientes']
-                        ).properties(height=220, title="Evolución de Partidas Por Identificar")
-                        
-                        c_h1, c_h2 = st.columns(2)
-                        with c_h1:
-                            st.altair_chart(line_monto, use_container_width=True)
-                        with c_h2:
-                            st.altair_chart(line_pi, use_container_width=True)
+                        if len(df_hist) >= 2:
+                            line_monto = alt.Chart(df_hist).mark_line(point=True, color='#C2185B').encode(
+                                x=alt.X('Fecha Cierre:N', title='Fecha / Hora Cierre'),
+                                y=alt.Y('Monto Total:Q', title='Monto Recaudado ($)'),
+                                tooltip=['Fecha Cierre', 'Sociedad', 'Monto Total', 'Partidas Pendientes']
+                            ).properties(height=240, title="Evolución del Recaudo Total")
+                            
+                            line_pi = alt.Chart(df_hist).mark_line(point=True, color='#DC2626').encode(
+                                x=alt.X('Fecha Cierre:N', title='Fecha / Hora Cierre'),
+                                y=alt.Y('Monto Pendiente:Q', title='Monto Pendiente ($)'),
+                                tooltip=['Fecha Cierre', 'Monto Pendiente', 'Partidas Pendientes']
+                            ).properties(height=240, title="Evolución de Partidas Por Identificar")
+                            
+                            c_h1, c_h2 = alt.hconcat() # o usar columnas de streamlit
+                            c_h1, c_h2 = st.columns(2)
+                            with c_h1:
+                                st.altair_chart(line_monto, use_container_width=True)
+                            with c_h2:
+                                st.altair_chart(line_pi, use_container_width=True)
+                        else:
+                            st.info("ℹ️ Tienes 1 cierre guardado. Las gráficas de tendencia se activarán automáticamente cuando guardes un segundo cierre.")
 
+                        st.markdown("#### 📋 Registro Detallado de Cierres Guardados")
                         st.dataframe(df_hist, use_container_width=True)
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # VISUALIZACIÓN DIRECTA DEL EXTRACTO GENERAL COMPLETO
                 st.markdown("#### 📋 Detalle del Extracto General")
                 st.dataframe(df_ext_gen, use_container_width=True)
 
-                # MEJORA PRO 3: BITÁCORA Y COMENTARIOS DE SEGUIMIENTO EN PARTIDAS POR IDENTIFICAR
                 if len(df_p_gen) > 0:
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown("#### ⚠️ Partidas Por Identificar & Bitácora de Auditoría")
@@ -961,17 +960,15 @@ Generado por Colaborador Popsy - Sistema Automático SAP
                     else:
                         df_p_view = df_p_gen.copy()
 
-                    # Agregar notas de seguimiento guardadas
                     df_p_view['Notas Auditoría'] = [st.session_state.notas_partidas.get(str(r), '') for r in df_p_view[col_ref_gen]]
                     st.dataframe(df_p_view, use_container_width=True)
                     
-                    # Formulario para registrar nota de seguimiento
                     with st.expander("💬 Registrar / Actualizar Nota de Auditoría sobre Partida Pendiente"):
                         c_n1, c_n2 = st.columns([1, 2])
                         with c_n1:
                             ref_nota_select = st.selectbox("Selecciona la Referencia:", df_p_view[col_ref_gen].astype(str).unique())
                         with c_n2:
-                            texto_nota_input = st.text_input("Ingresa el comentario de seguimiento (ej. 'Se solicitó soporte a tienda el 16/10'):")
+                            texto_nota_input = st.text_input("Ingresa el comentario de seguimiento:")
                             
                         if st.button("Guardar Nota de Auditoría"):
                             if ref_nota_select and texto_nota_input:
